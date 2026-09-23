@@ -83,6 +83,7 @@ static uint32_t g_rate[AM67_PWM_NGROUPS]  = { 50, 50, 50 }; /* Hz per group */
 static uint16_t g_pulse_us[AM67_PWM_NCHANNELS];             /* commanded width */
 static bool     g_armed;
 static bool     g_inited;
+static bool     g_epwm_ok = true;
 
 /* Channel -> group and NuttX in-module channel (1=A, 2=B; eCAP APWM = 1). */
 static inline unsigned chan_group(unsigned ch) { return (ch < 4u) ? (ch / 2u) : 2u; }
@@ -184,10 +185,22 @@ int up_pwm_servo_init(uint32_t channel_mask)
 			return -EIO;
 		}
 
+		g_epwm_ok = (epwm_ok != 0);
 		g_inited = true;
+
+		if (!g_epwm_ok) {
+			syslog(LOG_ERR, "epwm setup failed, dropping channels 0-3\n");
+		}
 	}
 
-	return channel_mask;
+	/* A dead EPWM must not stay in the mask: pwm_out would arm four
+	 * silent motors and still look healthy. eCAP (channel 4) can run.
+	 */
+	if (!g_epwm_ok) {
+		return (int)(channel_mask & ~0x0fu);
+	}
+
+	return (int)channel_mask;
 }
 
 void up_pwm_servo_deinit(uint32_t channel_mask)
