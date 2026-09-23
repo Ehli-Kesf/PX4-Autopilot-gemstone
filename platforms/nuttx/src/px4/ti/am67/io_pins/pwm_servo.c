@@ -59,6 +59,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <string.h>
+#include <syslog.h>
 
 #include <drivers/drv_pwm_output.h>
 #include <px4_arch/io_timer.h>
@@ -70,6 +71,7 @@ int am67_epwm_init(void);
 struct pwm_lowerhalf_s *am67_epwminitialize(int pwm);
 int am67_ecap_init(void);
 struct pwm_lowerhalf_s *am67_ecapinitialize(int ecap);
+int am67_tisci_device_on(uint32_t id);
 __END_DECLS
 
 #define AM67_PWM_NGROUPS   BOARD_NUM_IO_TIMERS      /* 3: EPWM0, EPWM1, eCAP0 */
@@ -147,7 +149,16 @@ static void commit_group(unsigned group)
 int up_pwm_servo_init(uint32_t channel_mask)
 {
 	if (!g_inited) {
+		int epwm_ok = 1;
+		static int attempts;
+
 		am67_epwm_init();
+
+		/* J722S_DEV_EPWM0 / EPWM1. Setup reads PID 0 and skips pinmux
+		 * while these power domains are off. */
+		(void)am67_tisci_device_on(86u);
+		(void)am67_tisci_device_on(87u);
+
 		am67_ecap_init();
 
 		g_lower[0] = am67_epwminitialize(0);
@@ -155,9 +166,22 @@ int up_pwm_servo_init(uint32_t channel_mask)
 		g_lower[2] = am67_ecapinitialize(1);   /* eCAP1 = GPIO-16 (eCAP0 collides with EPWM0_B on C20) */
 
 		for (unsigned g = 0; g < AM67_PWM_NGROUPS; g++) {
-			if (g_lower[g] != NULL) {
-				g_lower[g]->ops->setup(g_lower[g]);
+			int ret;
+
+			if (g_lower[g] == NULL) {
+				continue;
 			}
+
+			ret = g_lower[g]->ops->setup(g_lower[g]);
+
+			if (g < 2u && ret < 0) {
+				epwm_ok = 0;
+			}
+		}
+
+		if (!epwm_ok && ++attempts < 3) {
+			syslog(LOG_ERR, "epwm setup failed, retry %d\n", attempts);
+			return -EIO;
 		}
 
 		g_inited = true;
