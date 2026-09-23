@@ -259,7 +259,7 @@ void ICM20948::RunImpl()
 			bool success = false;
 			const uint16_t fifo_count = FIFOReadCount();
 
-			if (fifo_count >= FIFO::SIZE) {
+			if (fifo_count > FIFO::CAPACITY) {
 				FIFOReset();
 				perf_count(_fifo_overflow_perf);
 
@@ -609,7 +609,7 @@ bool ICM20948::FIFORead(const hrt_abstime &timestamp_sample, uint8_t samples)
 
 	const uint16_t fifo_count_bytes = combine(buffer.FIFO_COUNTH, buffer.FIFO_COUNTL);
 
-	if (fifo_count_bytes >= FIFO::SIZE) {
+	if (fifo_count_bytes > FIFO::CAPACITY) {
 		perf_count(_fifo_overflow_perf);
 		FIFOReset();
 		return false;
