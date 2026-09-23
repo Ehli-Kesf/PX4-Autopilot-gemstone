@@ -146,6 +146,8 @@ __EXPORT void am67_spidev_initialize(void)
 	usleep(100 * 1000);
 	am67_sensors_power_enable(true);
 	usleep(50 * 1000);
+	/* Same drive again so the log shows the pin after the wait, not only at the write. */
+	am67_sensors_power_enable(true);
 
 	syslog(LOG_INFO, "[spi] MCU_MCSPI0 init: resetting controller...\n");
 	am67_spiinitialize();

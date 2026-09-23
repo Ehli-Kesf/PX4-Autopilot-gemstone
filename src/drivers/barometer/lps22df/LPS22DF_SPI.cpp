@@ -34,6 +34,9 @@
 #include "LPS22DF.hpp"
 
 #include <drivers/device/spi.h>
+#include <px4_platform_common/log.h>
+
+#include <inttypes.h>
 
 /* SPI protocol address bits */
 #define DIR_READ	(1 << 7)
@@ -67,15 +70,33 @@ LPS22DF_SPI::LPS22DF_SPI(int bus, uint32_t device, int bus_frequency, spi_mode_e
 
 int LPS22DF_SPI::probe()
 {
-	uint8_t id = 0;
+	/* Datasheet map: IF_CTRL 0x0E, WHO_AM_I 0x0F, CTRL_REG1 0x10, CTRL_REG2 0x11, STATUS 0x27. */
+	static const uint8_t probe_regs[] = {
+		0x0e, lps22df::WHO_AM_I, lps22df::CTRL_REG1, lps22df::CTRL_REG2, lps22df::STATUS
+	};
 
-	if (read(lps22df::WHO_AM_I, &id, 1)) {
-		DEVICE_DEBUG("read_reg fail");
+	for (uint8_t reg : probe_regs) {
+		uint8_t unused = 0;
+		(void)read(reg, &unused, 1);
+	}
+
+	/* Second pass: are 0x11 and 0x27 stable. 32-bit RX is logged in the MCSPI driver. */
+	{
+		uint8_t repeat = 0;
+		(void)read(lps22df::CTRL_REG2, &repeat, 1);
+		(void)read(lps22df::STATUS, &repeat, 1);
+	}
+
+	uint8_t id = 0;
+	const int ret = read(lps22df::WHO_AM_I, &id, 1);
+
+	if (ret != 0) {
+		PX4_ERR("WHO_AM_I read failed (%i)", ret);
 		return -EIO;
 	}
 
 	if (id != lps22df::WHO_AM_I_VALUE) {
-		DEVICE_DEBUG("ID byte mismatch (%02x != %02x)", lps22df::WHO_AM_I_VALUE, id);
+		PX4_ERR("WHO_AM_I 0x%02x, expected 0x%02x", id, lps22df::WHO_AM_I_VALUE);
 		return -EIO;
 	}
 
@@ -90,9 +111,27 @@ int LPS22DF_SPI::read(unsigned address, void *data, unsigned count)
 		return -EIO;
 	}
 
-	buf[0] = address | DIR_READ;
+	const uint8_t cmd = (uint8_t)(address | DIR_READ);
+	buf[0] = cmd;
 
 	int ret = transfer(&buf[0], &buf[0], count + 1);
+
+	/* Same buffer is sent and received, so buf[0] is no longer the command.
+	 * Probe window only, once per address: IF_CTRL, WHO_AM_I, CTRL_REG1/2, STATUS.
+	 */
+	if (count >= 1 && (address == 0x0e || address == lps22df::WHO_AM_I ||
+			   address == lps22df::CTRL_REG1 || address == lps22df::CTRL_REG2 ||
+			   address == lps22df::STATUS)) {
+		static uint32_t logged_mask;
+
+		if ((logged_mask & (1u << (address & 31))) == 0) {
+			logged_mask |= 1u << (address & 31);
+			PX4_ERR("reg 0x%02x cmd 0x%02x rx0 0x%02x rx1 0x%02x ret %i bus %u freq %" PRIu32,
+				address, cmd, buf[0], buf[1], ret,
+				get_device_bus(), get_frequency());
+		}
+	}
+
 	memcpy(data, &buf[1], count);
 	return ret;
 }
