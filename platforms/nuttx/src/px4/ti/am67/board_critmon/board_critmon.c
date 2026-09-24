@@ -35,14 +35,13 @@
  * @file board_critmon.c
  *
  * High-resolution timing source for NuttX's critical-section / IRQ monitor.
- * Only needed when CONFIG_SCHED_CRITMONITOR / CONFIG_SCHED_IRQMONITOR is set
- * (both off by default for this board), so this translation unit is normally
- * empty. TODO: back up_critmon_gettime() with the Cortex-R5 PMU cycle counter
- * (PMCCNTR) if the monitor is enabled.
+ * Nothing to provide: NuttX times the critical-section and IRQ monitors with
+ * up_perf_gettime() from arch/arm/src/armv7-r/arm_perf.c (the R5 PMU cycle
+ * counter). boards/t3gemstone/o1/src/init.c starts and calibrates it when
+ * CONFIG_SCHED_CRITMONITOR or CONFIG_SCHED_IRQMONITOR is set. After changing
+ * either option, clean the NuttX tree: its objects do not track .config.
  */
 
 #include <nuttx/config.h>
 
-#if defined(CONFIG_SCHED_CRITMONITOR) || defined(CONFIG_SCHED_IRQMONITOR)
-#  error "AM67 up_critmon_* not implemented yet - back it with the R5 PMU cycle counter"
-#endif
+
