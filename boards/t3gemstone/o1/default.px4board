@@ -6,6 +6,8 @@ CONFIG_BOARD_ARCHITECTURE="cortex-r5f"
 # (px4_spibus + hardware-CS glue) exists (platforms/nuttx/src/px4/ti/am67/spi);
 # it is started from init/rc.board_sensors.
 # CONFIG_DRIVERS_BAROMETER_LPS22DF is not set
+CONFIG_DRIVERS_GPS=y
+# CONFIG_GPS_MTK is not set
 CONFIG_DRIVERS_IMU_INVENSENSE_ICM20948=y
 CONFIG_DRIVERS_PWM_OUT=y
 

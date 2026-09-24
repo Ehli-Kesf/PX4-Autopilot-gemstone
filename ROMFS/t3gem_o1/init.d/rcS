@@ -12,7 +12,7 @@ param set SYS_AUTOSTART 4001
 # No barometer yet: the fitted part does not match the schematic's LPS22DF.
 # Height comes from GPS until a barometer is added.
 param set SYS_HAS_BARO 0
-param set SYS_HAS_GPS 0
+param set SYS_HAS_GPS 1
 param set EKF2_BARO_CTRL 0
 param set EKF2_HGT_REF 1
 
@@ -22,6 +22,11 @@ dataman start
 # AK09916 magnetometer.
 icm20948 -s -b 1 -c 3 -M -R 8 start
 sensors start
+
+# GPS on MAIN_UART6 (/dev/ttyS1, HAT 7 RX / 11 TX). No -b: the driver scans
+# the baud rate and moves a u-blox M8+ to 115200 itself. Forcing 9600 kept a
+# 10 Hz UBX stream on a 9600 baud link, which overflows it.
+gps start -d /dev/ttyS1
 ekf2 start
 commander start
 mc_rate_control start

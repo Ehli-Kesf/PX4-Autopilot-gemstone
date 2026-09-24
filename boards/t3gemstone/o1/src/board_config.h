@@ -119,12 +119,12 @@
 #define BOARD_NUM_IO_TIMERS          3
 
 /* RC input -----------------------------------------------------------------
- * board_common.h requires RC_SERIAL_PORT or CONFIG_BOARD_SERIAL_RC to be
- * defined. No RC receiver is wired yet; this is a placeholder so the tree
- * compiles. The RC driver is not started from rcS, so the device is never
- * opened. TODO: point at a real UART when RC is added.
+ * board_common.h requires RC_SERIAL_PORT or CONFIG_BOARD_SERIAL_RC. No RC
+ * receiver is wired and rcS does not start an RC driver. /dev/ttyS1 is the
+ * GPS UART, so the placeholder names a node that does not exist; opening it
+ * fails instead of stealing the GPS port. Point it at the RC UART in D5.
  */
-#define RC_SERIAL_PORT         "/dev/ttyS1"
+#define RC_SERIAL_PORT         "/dev/ttyS9"
 
 /****************************************************************************
  * Public Functions
