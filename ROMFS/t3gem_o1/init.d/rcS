@@ -9,12 +9,18 @@ set +e
 
 # RAM-only params (no SD/MTD): re-applied every boot
 param set SYS_AUTOSTART 4001
-param set SYS_HAS_BARO 1
+# No barometer yet: the fitted part does not match the schematic's LPS22DF.
+# Height comes from GPS until a barometer is added.
+param set SYS_HAS_BARO 0
 param set SYS_HAS_GPS 0
+param set EKF2_BARO_CTRL 0
+param set EKF2_HGT_REF 1
 
 dataman start
-icm20948 -s -b 1 -c 3 -M start
-lps22df -s -b 1 start
+# ICM-20948 sits on the bottom side. Body +X follows the X arrow printed
+# next to it, which gives ROTATION_ROLL_180 (8) for accel, gyro and the
+# AK09916 magnetometer.
+icm20948 -s -b 1 -c 3 -M -R 8 start
 sensors start
 ekf2 start
 commander start
