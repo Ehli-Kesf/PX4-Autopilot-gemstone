@@ -68,6 +68,9 @@
  * declare it locally. */
 extern void lib_cxx_initialize(void);
 
+/* arch/arm/src/am67/am67_serial.c: powers MAIN_UART6 (/dev/ttyS1, GPS). */
+extern int am67_uart6_enable(void);
+
 #ifdef CONFIG_RPTUN
 /* AM67 rptun (RPMsg + virtio-net over the A53-Linux remoteproc link). Lives in
  * arch/arm/src/am67 (not on this board's include path), so declare it locally.
@@ -88,6 +91,12 @@ extern int am67_rptun_init(void);
 __EXPORT int board_app_initialize(uintptr_t arg)
 {
 	(void)arg;
+
+	/* MAIN_UART6 is /dev/ttyS1 (GPS, HAT 7/11). The DMSC keeps it off and
+	 * MDR1 disabled until asked; the GPS driver opens it from rcS, later. */
+	if (am67_uart6_enable() < 0) {
+		syslog(LOG_ERR, "[boot] MAIN_UART6 power-on failed, no GPS\n");
+	}
 
 	/* Run C++ global constructors before any PX4 code executes. This board
 	 * brings PX4 up from board_late_initialize(), which NuttX calls from
