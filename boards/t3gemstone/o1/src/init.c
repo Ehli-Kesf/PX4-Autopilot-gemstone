@@ -55,6 +55,8 @@
 #include <nuttx/serial/uart_rpmsg_raw.h>
 
 #include <nuttx/board.h>
+#include <nuttx/arch.h>
+#include <drivers/drv_hrt.h>
 
 #include <parameters/param.h>
 
@@ -107,6 +109,26 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 		syslog(LOG_ERR, "[boot] px4_platform_init failed (%d)\n", ret);
 		return ret;
 	}
+
+#if defined(CONFIG_SCHED_CRITMONITOR) || defined(CONFIG_SCHED_IRQMONITOR)
+	/* The critical-section and IRQ monitors time with the R5 PMU cycle
+	 * counter. Nothing else starts it on this chip, so enable it here and
+	 * calibrate it against the HRT (measured 799.93 MHz on the O1).
+	 */
+	{
+		up_perf_init((void *)1);
+		const hrt_abstime t0 = hrt_absolute_time();
+		const clock_t c0 = up_perf_gettime();
+
+		while (hrt_absolute_time() - t0 < 20000) {}
+
+		const clock_t c1 = up_perf_gettime();
+		const hrt_abstime t1 = hrt_absolute_time();
+		const unsigned long hz = (unsigned long)((uint64_t)(c1 - c0) * 1000000ull / (t1 - t0));
+		up_perf_init((void *)(uintptr_t)hz);
+		syslog(LOG_INFO, "[perf] R5 core %lu Hz\n", hz);
+	}
+#endif
 
 	/* Apply the board manifest (no-op until we describe HW variants). */
 	px4_platform_configure();
