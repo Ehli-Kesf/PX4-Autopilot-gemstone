@@ -35,10 +35,6 @@
 
 #include "AKM_AK09916_registers.hpp"
 
-#include <px4_platform_common/log.h>
-
-#include <inttypes.h>
-
 using namespace time_literals;
 
 static constexpr int16_t combine(uint8_t msb, uint8_t lsb)
@@ -161,9 +157,6 @@ int ICM20948::probe()
 void ICM20948::RunImpl()
 {
 	const hrt_abstime now = hrt_absolute_time();
-	static bool whoami_logged = false;
-	static hrt_abstime last_fifo_ok = 0;
-	static bool overflow_logged = false;
 
 	switch (_state) {
 	case STATE::RESET:
@@ -175,18 +168,10 @@ void ICM20948::RunImpl()
 		ScheduleDelayed(100_ms);
 		break;
 
-	case STATE::WAIT_FOR_RESET: {
-
-		/* Same-boot control for the barometer zeros. Register 0x00, expected 0xEA. */
-		const uint8_t whoami = RegisterRead(Register::BANK_0::WHO_AM_I);
-
-		if (!whoami_logged) {
-			whoami_logged = true;
-			PX4_ERR("ICM WHO_AM_I 0x%02x expected 0x%02x", whoami, WHOAMI);
-		}
+	case STATE::WAIT_FOR_RESET:
 
 		// The reset value is 0x00 for all registers other than the registers below
-		if ((whoami == WHOAMI)
+		if ((RegisterRead(Register::BANK_0::WHO_AM_I) == WHOAMI)
 		    && (RegisterRead(Register::BANK_0::PWR_MGMT_1) == 0x41)) {
 
 			// Wakeup and reset
@@ -212,7 +197,6 @@ void ICM20948::RunImpl()
 		}
 
 		break;
-	}
 
 	case STATE::CONFIGURE:
 		if (Configure()) {
@@ -275,13 +259,7 @@ void ICM20948::RunImpl()
 			bool success = false;
 			const uint16_t fifo_count = FIFOReadCount();
 
-			if (fifo_count > FIFO::CAPACITY) {
-				if (!overflow_logged) {
-					overflow_logged = true;
-					const uint64_t dt_us = last_fifo_ok ? (now - last_fifo_ok) : 0;
-					PX4_ERR("fifo overflow count %u dt_us %" PRIu64, fifo_count, dt_us);
-				}
-
+			if (fifo_count >= FIFO::SIZE) {
 				FIFOReset();
 				perf_count(_fifo_overflow_perf);
 
@@ -321,10 +299,6 @@ void ICM20948::RunImpl()
 						}
 					}
 				}
-			}
-
-			if (success) {
-				last_fifo_ok = timestamp_sample;
 			}
 
 			if (!success) {
@@ -635,7 +609,7 @@ bool ICM20948::FIFORead(const hrt_abstime &timestamp_sample, uint8_t samples)
 
 	const uint16_t fifo_count_bytes = combine(buffer.FIFO_COUNTH, buffer.FIFO_COUNTL);
 
-	if (fifo_count_bytes > FIFO::CAPACITY) {
+	if (fifo_count_bytes >= FIFO::SIZE) {
 		perf_count(_fifo_overflow_perf);
 		FIFOReset();
 		return false;

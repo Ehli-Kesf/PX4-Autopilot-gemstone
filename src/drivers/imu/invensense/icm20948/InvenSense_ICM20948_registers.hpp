@@ -268,8 +268,6 @@ enum I2C_SLV4_CTRL_BIT : uint8_t {
 namespace FIFO
 {
 static constexpr size_t SIZE = 512;
-// DS-000189 rev 1.5: FIFO is 4 kB. SIZE is only the bytes copied in one transfer.
-static constexpr size_t CAPACITY = 4096;
 
 // FIFO_DATA layout when FIFO_EN has ACCEL_FIFO_EN and GYRO_{Z, Y, X}_FIFO_EN set
 struct DATA {
