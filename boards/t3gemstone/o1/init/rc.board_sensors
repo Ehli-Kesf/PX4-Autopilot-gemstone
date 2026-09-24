@@ -1,8 +1,0 @@
-#!/bin/sh
-#
-# T3 Gemstone O1 sensors: ICM-20948 (accel/gyro + AK09916 mag) and
-# LPS22DF barometer on SPI1
-#
-
-icm20948 -s -b 1 -c 3 -M start
-lps22df -s -b 1 start
