@@ -1,9 +1,0 @@
-#!/bin/sh
-#
-# MAVLink to the A53/Linux side over the rpmsg TTY (raw mode).
-# Linux bridges /dev/ttyRPMSG0 to UDP for QGC (socat/mavlink-router);
-# the bridge primes the channel with one byte so our TX learns its
-# destination address.
-#
-
-mavlink start -d /dev/tty
