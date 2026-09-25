@@ -37,21 +37,18 @@
  * Board-specific I2C bus configuration (the px4_i2c_buses table used by
  * platforms/common/i2c.cpp and PX4 I2C sensor drivers).
  *
- * The AM67 NuttX driver can register MCU_I2C0 (am67 port 0, MCU domain
- * 0x04900000) and WKUP_I2C0 (am67 port 2, WKUP domain 0x2b200000). The
- * PX4<->am67 mapping is px4_i2cbus_initialize(bus) =
- * am67_i2cbus_initialize(bus - PX4_BUS_OFFSET) in micro_hal.h, so PX4 bus 1 ->
- * MCU_I2C0 and PX4 bus 3 -> WKUP_I2C0 (/dev/i2c2).
+ * PX4 bus N maps to am67 NuttX port N - PX4_BUS_OFFSET (px4_arch/micro_hal.h):
+ * PX4 bus 1 is MCU_I2C0 (0x04900000), on HAT 3 (SDA) and HAT 5 (SCL). It is
+ * the external bus for a GPS-mounted compass. The px4-r5f overlay disables it
+ * in Linux, and am67_i2c powers it through the DMSC on first use.
  *
- * Only WKUP_I2C0 is enabled and wired on this board; every I2C sensor lives
- * there. MCU_I2C0 carries no peripheral and is not built (CONFIG_AM67_I2C0 is
- * off), so it is intentionally omitted - listing it would make `i2cdetect -b 1`
- * report an invalid/uninitialised bus. is_external is left false (internal)
- * pending the board's HAT vs. on-board split.
+ * WKUP_I2C0 is not listed and not built: Linux drives the PMIC, RTC and
+ * EEPROM on it. The am67 I2C driver resets its controller on first use, so a
+ * single R5F transfer there would cut into Linux's PMIC traffic.
  */
 
 #include <px4_platform_common/i2c.h>
 
 constexpr px4_i2c_bus_t px4_i2c_buses[I2C_BUS_MAX_BUS_ITEMS] = {
-	{ 3, false },   /* WKUP_I2C0 (am67 port 2, /dev/i2c2) */
+	{ 1, true },    /* MCU_I2C0 (am67 port 0), HAT 3/5, external */
 };

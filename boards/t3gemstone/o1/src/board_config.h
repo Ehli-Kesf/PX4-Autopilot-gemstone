@@ -69,10 +69,8 @@
 #define HRT_TIMER_RATE   25000000u     /* DMTimer input = HFOSC0 @ 25 MHz         */
 
 /* I2C ----------------------------------------------------------------------
- * The only I2C bus enabled and wired on this board is WKUP_I2C0 (WKUP domain,
- * 0x2b200000) -> PX4 bus 3. The AM67 also has MCU_I2C0 (MCU domain,
- * 0x04900000 -> PX4 bus 1), but it carries no peripheral and is not built, so
- * it is not listed. See src/i2c.cpp for the table and mapping.
+ * One bus: MCU_I2C0 -> PX4 bus 1, external (HAT 3/5). WKUP_I2C0 belongs to
+ * Linux (PMIC, RTC, EEPROM) and is not built. See src/i2c.cpp.
  */
 #define PX4_NUMBER_I2C_BUSES   1
 
