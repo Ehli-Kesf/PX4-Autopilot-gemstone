@@ -40,6 +40,10 @@ param set-default CA_ROTOR3_PY 1
 param set-default CA_ROTOR3_KM -0.05
 param set-default RTL_RETURN_ALT 30
 param set-default RTL_DESCEND_ALT 10
+# Ground station link loss: the MAVLink link through Linux is the only
+# control link on this board (no RC yet), and it also dies when Linux does.
+# Return after COM_DL_LOSS_T (10 s); PX4 falls back to Land without a home.
+param set-default NAV_DLL_ACT 2
 # Outputs: ch1..4 (EPWM0_A/B, EPWM1_A/B) = Motor1..4, ch5 (eCAP1) unused.
 param set-default PWM_MAIN_FUNC1 101
 param set-default PWM_MAIN_FUNC2 102
