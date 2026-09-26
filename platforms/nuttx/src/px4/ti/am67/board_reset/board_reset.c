@@ -72,6 +72,16 @@
 
 #define rsterr(fmt, ...)  syslog(LOG_ERR, "[reset] " fmt "\n", ##__VA_ARGS__)
 
+/* Motor output kill switches from arch/arm/src/am67 (Trip-Zone / eCAP stop).
+ * Both are safe to call before the outputs were set up.
+ */
+#if defined(CONFIG_AM67_EPWM0) || defined(CONFIG_AM67_EPWM1)
+extern void am67_epwm_emergency_stop(void);
+#endif
+#if defined(CONFIG_AM67_ECAP0) || defined(CONFIG_AM67_ECAP1) || defined(CONFIG_AM67_ECAP2)
+extern void am67_ecap_emergency_stop(void);
+#endif
+
 #ifdef CONFIG_BOARDCTL_RESET
 
 /**
@@ -107,6 +117,18 @@ int board_configure_reset(reset_mode_e mode, uint32_t arg)
  */
 int board_reset(int status)
 {
+	/* The EPWM and eCAP counters keep running without the CPU, so a halted
+	 * core would leave every motor on its last command. Cut them first,
+	 * before anything below can fail.
+	 */
+	up_irq_save();
+#if defined(CONFIG_AM67_EPWM0) || defined(CONFIG_AM67_EPWM1)
+	am67_epwm_emergency_stop();
+#endif
+#if defined(CONFIG_AM67_ECAP0) || defined(CONFIG_AM67_ECAP1) || defined(CONFIG_AM67_ECAP2)
+	am67_ecap_emergency_stop();
+#endif
+
 	if (status == REBOOT_TO_BOOTLOADER) {
 		rsterr("reboot-to-bootloader requested but unsupported on this core "
 		       "(remoteproc selects the image).");
@@ -122,9 +144,8 @@ int board_reset(int status)
 	rsterr("  echo start > /sys/class/remoteproc/remoteprocN/state");
 
 	/* Freeze in a defined state so a corrupted OS cannot keep running and so
-	 * remoteproc crash-recovery (if enabled) can take over. */
-	up_irq_save();
-
+	 * remoteproc crash-recovery (if enabled) can take over. Interrupts have
+	 * been off since entry. */
 	for (;;) {
 	}
 
