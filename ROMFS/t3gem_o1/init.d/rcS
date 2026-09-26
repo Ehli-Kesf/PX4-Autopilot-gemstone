@@ -78,6 +78,10 @@ mc_pos_control start
 mc_hover_thrust_estimator start
 control_allocator start
 pwm_out start
+# Hardware watchdog (RTI8): kicked only while the gyro and the motor outputs
+# are being published. If the control loop stops for 0.5 s or the core hangs
+# (even with interrupts off), a FIQ cuts every motor output.
+fc_watchdog start
 land_detector start multicopter
 rc_update start
 manual_control start

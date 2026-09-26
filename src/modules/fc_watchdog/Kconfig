@@ -1,0 +1,9 @@
+menuconfig MODULES_FC_WATCHDOG
+	bool "fc_watchdog"
+	default n
+	depends on PLATFORM_NUTTX
+	---help---
+		Hardware watchdog fed only while the flight control loop runs
+		(gyro and motor outputs updating). Currently backed by the TI AM67
+		RTI8 watchdog (NuttX CONFIG_AM67_RTI8_WDT), whose expiry cuts the
+		motor outputs from a FIQ.
