@@ -9,6 +9,10 @@ set +e
 
 # RAM-only params (no SD/MTD): re-applied every boot
 param set SYS_AUTOSTART 4001
+# QGC requires SYS_AUTOCONFIG, and PX4 only lists parameters some code has
+# looked up. The standard rcS reads it; this one does not, so mark it used.
+# It has no effect yet: parameters are not stored across a reboot.
+param touch SYS_AUTOCONFIG
 # No barometer yet: the fitted part does not match the schematic's LPS22DF.
 # Height comes from GPS until a barometer is added.
 param set SYS_HAS_BARO 0
