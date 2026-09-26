@@ -50,6 +50,13 @@
 # error This driver requires CONFIG_SPI_EXCHANGE
 #endif
 
+#if defined(CONFIG_ARCH_CHIP_AM67)
+// NuttX SPI_EXCHANGE() cannot fail. The AM67 MCSPI driver counts timed-out
+// words instead, so a transfer from a wedged controller is not returned as
+// valid (zeroed) data.
+extern "C" int am67_mcspi_take_errors(struct spi_dev_s *dev);
+#endif
+
 namespace device
 {
 
@@ -176,6 +183,14 @@ SPI::_transfer(uint8_t *send, uint8_t *recv, unsigned len)
 	/* and clean up */
 	SPI_SELECT(_dev, _device, false);
 
+#if defined(CONFIG_ARCH_CHIP_AM67)
+
+	if (am67_mcspi_take_errors(_dev) != 0) {
+		return -EIO;
+	}
+
+#endif
+
 	return PX4_OK;
 }
 
@@ -227,6 +242,14 @@ SPI::_transferhword(uint16_t *send, uint16_t *recv, unsigned len)
 
 	/* and clean up */
 	SPI_SELECT(_dev, _device, false);
+
+#if defined(CONFIG_ARCH_CHIP_AM67)
+
+	if (am67_mcspi_take_errors(_dev) != 0) {
+		return -EIO;
+	}
+
+#endif
 
 	return PX4_OK;
 }
