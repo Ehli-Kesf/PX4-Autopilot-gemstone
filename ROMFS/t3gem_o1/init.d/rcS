@@ -16,6 +16,33 @@ param set SYS_HAS_GPS 1
 param set EKF2_BARO_CTRL 0
 param set EKF2_HGT_REF 1
 
+# Airframe 4001 (Quad X), copied from airframes/4001_quad_x and rc.mc_defaults
+# because this rcS does not run rc.autostart. Without these CA_ROTOR_COUNT
+# stays 0 and the control allocator drives no motor at all.
+# IMU_GYRO_RATEMAX stays at 400 Hz: the EPWM frame is 400 Hz, so a faster
+# rate loop could not reach the ESCs any sooner.
+param set-default MAV_TYPE 2
+param set-default CA_AIRFRAME 0
+param set-default CA_ROTOR_COUNT 4
+param set-default CA_ROTOR0_PX 1
+param set-default CA_ROTOR0_PY 1
+param set-default CA_ROTOR1_PX -1
+param set-default CA_ROTOR1_PY -1
+param set-default CA_ROTOR2_PX 1
+param set-default CA_ROTOR2_PY -1
+param set-default CA_ROTOR2_KM -0.05
+param set-default CA_ROTOR3_PX -1
+param set-default CA_ROTOR3_PY 1
+param set-default CA_ROTOR3_KM -0.05
+param set-default RTL_RETURN_ALT 30
+param set-default RTL_DESCEND_ALT 10
+# Outputs: ch1..4 (EPWM0_A/B, EPWM1_A/B) = Motor1..4, ch5 (eCAP1) unused.
+param set-default PWM_MAIN_FUNC1 101
+param set-default PWM_MAIN_FUNC2 102
+param set-default PWM_MAIN_FUNC3 103
+param set-default PWM_MAIN_FUNC4 104
+param set-default PWM_MAIN_FUNC5 0
+
 dataman start
 # ICM-20948 sits on the bottom side. Body +X follows the X arrow printed
 # next to it, which gives ROTATION_ROLL_180 (8) for accel, gyro and the

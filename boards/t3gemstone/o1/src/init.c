@@ -142,29 +142,6 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	/* Apply the board manifest (no-op until we describe HW variants). */
 	px4_platform_configure();
 
-	/* Map the PWM outputs to actuator functions as board defaults. This board
-	 * has no persistent param storage and does not auto-run rcS/rc.board_defaults,
-	 * so set the DEFAULT (not the value: no autosave, and a user override still
-	 * wins) here to keep the outputs mapped across every boot:
-	 *   ch0 EPWM0_A=Motor1  ch1 EPWM0_B=Motor2  ch2 EPWM1_A=Motor3
-	 *   ch3 EPWM1_B=Motor4  ch4 eCAP1  =Motor5
-	 */
-	{
-		static const char *const pwm_func_names[] = {
-			"PWM_MAIN_FUNC1", "PWM_MAIN_FUNC2", "PWM_MAIN_FUNC3",
-			"PWM_MAIN_FUNC4", "PWM_MAIN_FUNC5",
-		};
-
-		for (unsigned i = 0; i < sizeof(pwm_func_names) / sizeof(pwm_func_names[0]); i++) {
-			param_t p = param_find(pwm_func_names[i]);
-
-			if (p != PARAM_INVALID) {
-				int32_t func = 101 + (int32_t)i;   /* Motor 1..5 */
-				param_set_default_value(p, &func);
-			}
-		}
-	}
-
 #ifdef CONFIG_SPI
 	/* Bring up MCU_MCSPI0 so the SPI sensor drivers (ICM-20948, ...) can bind.
 	 * This powers the sensor rail and resets the MCSPI controller; watch the
