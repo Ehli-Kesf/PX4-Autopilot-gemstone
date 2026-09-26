@@ -51,9 +51,15 @@ param set-default PWM_MAIN_FUNC5 0
 # work within a boot instead of failing on a file that cannot be written.
 dataman start -r
 # ICM-20948 sits on the bottom side. Body +X follows the X arrow printed
-# next to it, which gives ROTATION_ROLL_180 (8) for accel, gyro and the
-# AK09916 magnetometer.
-icm20948 -s -b 1 -c 3 -M -R 8 start
+# next to it, which gives ROTATION_ROLL_180 (8) for accel and gyro.
+# No -M: the AK09916 inside the ICM is not used. On this board it reads
+# about 1.4 G against the 0.5 G earth field, and it can lock up when the
+# R5F restarts because the ICM has no power switch.
+icm20948 -s -b 1 -c 3 -R 8 start
+# Compass: QMC5883L (0x0D) in the Matek M10Q-5883 GPS module on MCU_I2C0
+# (HAT 3/5), arrow towards the board nose (+X), module top side up.
+# ROTATION_PITCH_180_YAW_270 (27): the chip sits upside down in the module.
+qmc5883l -X -b 1 -R 27 start
 sensors start
 
 # GPS on MAIN_UART6 (/dev/ttyS1, HAT 7 RX / 11 TX). No -b: the driver scans

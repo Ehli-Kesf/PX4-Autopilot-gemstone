@@ -9,6 +9,7 @@ CONFIG_BOARD_ARCHITECTURE="cortex-r5f"
 CONFIG_DRIVERS_GPS=y
 # CONFIG_GPS_MTK is not set
 CONFIG_DRIVERS_IMU_INVENSENSE_ICM20948=y
+CONFIG_DRIVERS_MAGNETOMETER_QMC5883L=y
 CONFIG_DRIVERS_PWM_OUT=y
 
 # --- Flight stack (multirotor closed loop) ----------------------------------
