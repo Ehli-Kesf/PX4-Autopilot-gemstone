@@ -124,6 +124,12 @@
  */
 #define RC_SERIAL_PORT         "/dev/ttyS9"
 
+/* Commander reports the armed state here every cycle. While it is set the
+ * R5F refuses a remoteproc stop from Linux (NuttX am67_rptun.c): no
+ * shutdown ACK, so `echo stop` fails and the autopilot keeps running.
+ */
+#define BOARD_INDICATE_EXTERNAL_LOCKOUT_STATE(enabled) am67_rptun_set_lockout(enabled)
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -133,6 +139,9 @@ __BEGIN_DECLS
 /* Bring up the MCU_MCSPI0 controller (arch spi layer,
  * platforms/nuttx/src/px4/ti/am67/spi). Called from board_app_initialize(). */
 void am67_spidev_initialize(void);
+
+/* NuttX arch/arm/src/am67/am67_rptun.c */
+void am67_rptun_set_lockout(bool locked);
 
 __END_DECLS
 
