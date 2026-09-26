@@ -43,7 +43,9 @@ param set-default PWM_MAIN_FUNC3 103
 param set-default PWM_MAIN_FUNC4 104
 param set-default PWM_MAIN_FUNC5 0
 
-dataman start
+# No persistent storage yet: keep missions and the geofence in RAM so they
+# work within a boot instead of failing on a file that cannot be written.
+dataman start -r
 # ICM-20948 sits on the bottom side. Body +X follows the X arrow printed
 # next to it, which gives ROTATION_ROLL_180 (8) for accel, gyro and the
 # AK09916 magnetometer.
