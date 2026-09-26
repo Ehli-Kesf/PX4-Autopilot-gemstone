@@ -138,6 +138,7 @@
 #define DMTIMER_TLDR            0x40u  /* Load/reload register               */
 #define DMTIMER_TWPS            0x48u  /* Write-posting status               */
 #define DMTIMER_TMAR            0x4Cu  /* Match/compare register             */
+#define DMTIMER_TSICR           0x54u  /* Interface control (POSTED = bit 2)  */
 
 /* TCLR bits */
 #define TCLR_ST                 (1u << 0)  /* Start                          */
@@ -250,6 +251,16 @@ static void hrt_tim_init(void)
 		/* Continue: the counter checks below add more evidence, and PX4
 		 * higher layers will fail loudly too. */
 	}
+
+	/* Leave posted mode (TSICR.POSTED is 1 after reset). A posted write to a
+	 * register that still has a write pending is dropped without notice;
+	 * this driver writes TCLR back to back here and TMAR twice in a row when
+	 * the ISR reschedules. Losing a TMAR write would stop the compare
+	 * interrupt until the counter wraps (172 s), and every scheduled work
+	 * queue with it. Wait for pending writes first. */
+	for (unsigned spins = 0; REG(DMTIMER_TWPS) != 0 && spins < 100000; spins++) {}
+
+	REG(DMTIMER_TSICR) = 0;
 
 	/* Stop the timer and clear any pending interrupts before (re)configuring. */
 	REG(DMTIMER_TCLR) = 0;
