@@ -69,5 +69,11 @@ rc_update start
 manual_control start
 navigator start
 
-# transport to Linux/QGC last; TX flows once the bridge primes the channel
-mavlink start -d /dev/tty
+# MAVLink to Linux over rpmsg (/dev/tty <-> /dev/ttyRPMSG0), bridged to the
+# ground station by gem-mavlink-bridge.service (mavp2p, 1 s heartbeat).
+# -w: send nothing until the first message arrives. Before that the channel
+#     has no destination address, the 4 kB TX ring fills and nothing ever
+#     drains it again (docs/adimlar/04 section 2.3).
+# -r 100000: same budget as a USB link (the 57600 default allowed 2880 B/s).
+# -x: MAVLink FTP for parameters and logs.
+mavlink start -d /dev/tty -b 2000000 -r 100000 -w -x
