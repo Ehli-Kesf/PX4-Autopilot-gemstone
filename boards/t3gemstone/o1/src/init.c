@@ -56,6 +56,7 @@
 
 #include <nuttx/board.h>
 #include <nuttx/arch.h>
+#include <nuttx/mmcsd.h>
 #include <drivers/drv_hrt.h>
 
 #include <parameters/param.h>
@@ -77,6 +78,10 @@ extern int am67_uart6_enable(void);
  * PX4 uses a custom board dir and does not compile the NuttX am67_bringup.c,
  * so the init call that file makes for the plain-NSH target must be made here. */
 extern int am67_rptun_init(void);
+
+/* arch/arm/src/am67/am67_sdhci.c: the eMMC (MMCSD0) as an SDIO slot. */
+struct sdio_dev_s;
+extern struct sdio_dev_s *am67_sdhci0_initialize(void);
 #endif
 
 /****************************************************************************
@@ -160,6 +165,24 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 
 	if (rptun_ret < 0) {
 		syslog(LOG_ERR, "[boot] am67_rptun_init failed (%d)\n", rptun_ret);
+	}
+#endif
+
+#ifdef CONFIG_AM67_SDHCI0
+	/* eMMC -> /dev/mmcsd0 (parameters, mission data, logs). Linux leaves
+	 * sdhci0 to the R5F (px4-r5f overlay). Without it PX4 still runs, with
+	 * parameters in RAM only. */
+	struct sdio_dev_s *sdio = am67_sdhci0_initialize();
+
+	if (sdio == NULL) {
+		syslog(LOG_ERR, "[boot] eMMC controller not available\n");
+
+	} else {
+		int mmc_ret = mmcsd_slotinitialize(0, sdio);
+
+		if (mmc_ret < 0) {
+			syslog(LOG_ERR, "[boot] eMMC init failed (%d)\n", mmc_ret);
+		}
 	}
 #endif
 

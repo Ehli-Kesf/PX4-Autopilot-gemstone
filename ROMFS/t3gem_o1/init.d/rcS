@@ -7,18 +7,33 @@
 #
 set +e
 
-# RAM-only params (no SD/MTD): re-applied every boot
-param set SYS_AUTOSTART 4001
+# Storage on the eMMC: parameters and mission data on the boot0 hardware
+# partition, logs on the user area, so a log volume damaged by a power cut
+# cannot take the parameters with it. Formatted once with mkfatfs
+# (REHBER 4.9). Without it parameters stay in RAM for this boot.
+if mount -t vfat /dev/mmcsd0boot0 /fs/params
+then
+	param select /fs/params/params
+	param load-or-init /fs/params/parameters_backup.bson
+	param select-backup /fs/params/parameters_backup.bson
+	dataman start -f /fs/params/dataman
+else
+	echo "ERROR [init] no parameter storage, parameters in RAM only"
+	dataman start -r
+fi
+mount -t vfat /dev/mmcsd0 /fs/microsd
+
+# Board defaults. A value changed from QGC is stored and wins.
+param set-default SYS_AUTOSTART 4001
 # QGC requires SYS_AUTOCONFIG, and PX4 only lists parameters some code has
 # looked up. The standard rcS reads it; this one does not, so mark it used.
-# It has no effect yet: parameters are not stored across a reboot.
 param touch SYS_AUTOCONFIG
 # No barometer yet: the fitted part does not match the schematic's LPS22DF.
 # Height comes from GPS until a barometer is added.
-param set SYS_HAS_BARO 0
-param set SYS_HAS_GPS 1
-param set EKF2_BARO_CTRL 0
-param set EKF2_HGT_REF 1
+param set-default SYS_HAS_BARO 0
+param set-default SYS_HAS_GPS 1
+param set-default EKF2_BARO_CTRL 0
+param set-default EKF2_HGT_REF 1
 
 # Airframe 4001 (Quad X), copied from airframes/4001_quad_x and rc.mc_defaults
 # because this rcS does not run rc.autostart. Without these CA_ROTOR_COUNT
@@ -51,9 +66,6 @@ param set-default PWM_MAIN_FUNC3 103
 param set-default PWM_MAIN_FUNC4 104
 param set-default PWM_MAIN_FUNC5 0
 
-# No persistent storage yet: keep missions and the geofence in RAM so they
-# work within a boot instead of failing on a file that cannot be written.
-dataman start -r
 # ICM-20948 sits on the bottom side. Body +X follows the X arrow printed
 # next to it, which gives ROTATION_ROLL_180 (8) for accel and gyro.
 # No -M: the AK09916 inside the ICM is not used. On this board it reads
@@ -99,3 +111,8 @@ navigator start
 # -r 100000: same budget as a USB link (the 57600 default allowed 2880 B/s).
 # -x: MAVLink FTP for parameters and logs.
 mavlink start -d /dev/tty -b 2000000 -r 100000 -w -x
+
+# ULog to the eMMC log volume (/fs/microsd/log), from arming to disarming.
+# -t: name the files by GPS date and time. SDLOG_MODE is not read here:
+# this linear script does not branch on parameters (see top).
+logger start -b 64 -t
