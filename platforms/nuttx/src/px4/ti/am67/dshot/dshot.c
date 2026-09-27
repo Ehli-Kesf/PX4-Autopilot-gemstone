@@ -44,6 +44,7 @@
 
 #include <px4_platform_common/px4_config.h>
 #include <drivers/drv_dshot.h>
+#include <px4_platform_common/log.h>
 #include <perf/perf_counter.h>
 
 #include <errno.h>
@@ -85,6 +86,17 @@ int up_dshot_init(uint32_t channel_mask, uint32_t bdshot_channel_mask, unsigned 
 
 	if (bdshot_channel_mask != 0) {
 		syslog(LOG_WARNING, "[dshot] bidirectional DShot not supported yet, sending plain DShot\n");
+	}
+
+	/* EPWM1 runs on EPWM0's time base and the FIQ engine writes both
+	 * modules, so DShot needs both groups (PWM_MAIN_TIM0 and PWM_MAIN_TIM1).
+	 * With one group in PWM the two drivers would fight over EPWM1: send
+	 * nothing instead. */
+	const uint32_t dshot_channels = channel_mask & AM67_DSHOT_CHANNEL_MASK;
+
+	if ((dshot_channels & 0x3u) == 0 || (dshot_channels & 0xcu) == 0) {
+		PX4_ERR("PWM_MAIN_TIM0 and PWM_MAIN_TIM1 must both be DShot; no DShot output");
+		return -EINVAL;
 	}
 
 	if (g_interval_perf == NULL) {

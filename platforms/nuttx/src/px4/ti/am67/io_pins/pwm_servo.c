@@ -83,7 +83,12 @@ static uint32_t g_rate[AM67_PWM_NGROUPS]  = { 50, 50, 50 }; /* Hz per group */
 static uint16_t g_pulse_us[AM67_PWM_NCHANNELS];             /* commanded width */
 static bool     g_armed;
 static bool     g_inited;
-static bool     g_epwm_ok = true;
+
+/* Groups pwm_out drives (bit n = group n). Every hardware access below is
+ * limited to them: the other groups may belong to the dshot driver
+ * (PWM_MAIN_TIMx < -1), whose time base a PWM start() would overwrite.
+ */
+static uint32_t g_owned;
 
 /* Channel -> group and NuttX in-module channel (1=A, 2=B; eCAP APWM = 1). */
 static inline unsigned chan_group(unsigned ch) { return (ch < 4u) ? (ch / 2u) : 2u; }
@@ -121,7 +126,7 @@ static void commit_group(unsigned group)
 {
 	struct pwm_lowerhalf_s *lower = g_lower[group];
 
-	if (lower == NULL || !g_armed) {
+	if (lower == NULL || !g_armed || (g_owned & (1u << group)) == 0) {
 		return;
 	}
 
@@ -150,9 +155,6 @@ static void commit_group(unsigned group)
 int up_pwm_servo_init(uint32_t channel_mask)
 {
 	if (!g_inited) {
-		int epwm_ok = 1;
-		static int attempts;
-
 		am67_epwm_init();
 
 		/* J722S_DEV_EPWM0 / EPWM1. Setup reads PID 0 and skips pinmux
@@ -165,45 +167,49 @@ int up_pwm_servo_init(uint32_t channel_mask)
 		g_lower[0] = am67_epwminitialize(0);
 		g_lower[1] = am67_epwminitialize(1);
 		g_lower[2] = am67_ecapinitialize(1);   /* eCAP1 = GPIO-16 (eCAP0 collides with EPWM0_B on C20) */
-
-		for (unsigned g = 0; g < AM67_PWM_NGROUPS; g++) {
-			int ret;
-
-			/* Leave groups outside the mask alone: the dshot driver owns
-			 * the EPWM groups configured for DShot (PWM_MAIN_TIMx < -1),
-			 * and setup() here would reset their time base. */
-			if (g_lower[g] == NULL || (group_mask(g) & channel_mask) == 0) {
-				continue;
-			}
-
-			ret = g_lower[g]->ops->setup(g_lower[g]);
-
-			if (g < 2u && ret < 0) {
-				epwm_ok = 0;
-			}
-		}
-
-		if (!epwm_ok && ++attempts < 3) {
-			syslog(LOG_ERR, "epwm setup failed, retry %d\n", attempts);
-			return -EIO;
-		}
-
-		g_epwm_ok = (epwm_ok != 0);
 		g_inited = true;
+	}
 
-		if (!g_epwm_ok) {
-			syslog(LOG_ERR, "epwm setup failed, dropping channels 0-3\n");
+	static int attempts;
+	uint32_t result = channel_mask;
+	bool epwm_failed = false;
+
+	for (unsigned g = 0; g < AM67_PWM_NGROUPS; g++) {
+		const uint32_t bit = 1u << g;
+
+		/* Leave groups outside the mask alone (see g_owned) */
+		if (g_lower[g] == NULL || (group_mask(g) & channel_mask) == 0) {
+			g_owned &= ~bit;
+			continue;
 		}
+
+		if ((g_owned & bit) != 0) {
+			continue;
+		}
+
+		/* A group that fails setup must not stay in the mask: pwm_out
+		 * would arm silent motors and still look healthy. */
+		if (g_lower[g]->ops->setup(g_lower[g]) < 0) {
+			epwm_failed |= (g < 2u);
+			result &= ~group_mask(g);
+			continue;
+		}
+
+		g_owned |= bit;
 	}
 
-	/* A dead EPWM must not stay in the mask: pwm_out would arm four
-	 * silent motors and still look healthy. eCAP (channel 4) can run.
-	 */
-	if (!g_epwm_ok) {
-		return (int)(channel_mask & ~0x0fu);
+	/* pwm_out retries a failed init: give the EPWM power domains a few
+	 * chances before dropping their channels. */
+	if (epwm_failed && ++attempts < 3) {
+		syslog(LOG_ERR, "epwm setup failed, retry %d\n", attempts);
+		return -EIO;
 	}
 
-	return (int)channel_mask;
+	if (epwm_failed) {
+		syslog(LOG_ERR, "epwm setup failed, channels dropped\n");
+	}
+
+	return (int)result;
 }
 
 void up_pwm_servo_deinit(uint32_t channel_mask)
@@ -267,7 +273,7 @@ void up_pwm_servo_arm(bool armed, uint32_t channel_mask)
 	g_armed = armed;
 
 	for (unsigned g = 0; g < AM67_PWM_NGROUPS; g++) {
-		if (g_lower[g] == NULL) {
+		if (g_lower[g] == NULL || (g_owned & (1u << g)) == 0) {
 			continue;
 		}
 
