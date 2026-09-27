@@ -41,7 +41,6 @@ static constexpr unsigned STACK_LOW_WARNING_THRESHOLD = 100;
 static constexpr unsigned STACK_LOW_WARNING_THRESHOLD = 300;
 #endif
 
-static constexpr unsigned FDS_LOW_WARNING_THRESHOLD = 2; ///< if free file descriptors fall below this, print a warning
 #endif
 
 using namespace time_literals;
@@ -271,19 +270,6 @@ void LoadMon::stack_usage()
 
 		checked_task = true;
 
-#if CONFIG_NFILE_DESCRIPTORS_PER_BLOCK > 0
-		unsigned int tcb_num_used_fds = 0; // number of used file descriptors
-		struct filelist *filelist = &system_load.tasks[_stack_task_index].tcb->group->tg_filelist;
-
-		for (int fdr = 0; fdr < filelist->fl_rows; fdr++) {
-			for (int fdc = 0; fdc < CONFIG_NFILE_DESCRIPTORS_PER_BLOCK; fdc++) {
-				if (filelist->fl_files[fdr][fdc].f_inode) {
-					++tcb_num_used_fds;
-				}
-			}
-		}
-
-#endif // CONFIG_NFILE_DESCRIPTORS_PER_BLOCK
 	}
 
 	sched_unlock();
