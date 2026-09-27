@@ -1,0 +1,10 @@
+#!/bin/sh
+#
+# T3 Gemstone O1 extras.
+#
+
+# Hardware watchdog (RTI8): kicked only while the gyro and the motor outputs
+# are being published. If the control loop stops for 0.5 s or the core hangs
+# (even with interrupts off or inside an interrupt handler), a FIQ cuts every
+# motor output.
+fc_watchdog start

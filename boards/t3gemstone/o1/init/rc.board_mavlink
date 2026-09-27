@@ -1,0 +1,11 @@
+#!/bin/sh
+#
+# T3 Gemstone O1: MAVLink to Linux over rpmsg (/dev/tty <-> /dev/ttyRPMSG0),
+# bridged to the ground station by gem-mavlink-bridge.service.
+# -w: send nothing until the first message arrives. Before that the channel
+#     has no destination address, the 4 kB TX ring fills and nothing ever
+#     drains it again (docs adimlar/04 section 2.3).
+# -r 100000: same budget as a USB link.
+# -x: MAVLink FTP for parameters and logs.
+#
+mavlink start -d /dev/tty -b 2000000 -r 100000 -w -x

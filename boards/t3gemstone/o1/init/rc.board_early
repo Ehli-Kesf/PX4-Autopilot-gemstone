@@ -1,0 +1,25 @@
+#!/bin/sh
+#
+# T3 Gemstone O1 early init: eMMC storage (docs REHBER 4.10).
+#
+# Parameters on the boot0 hardware partition (/fs/params, CONFIG_BOARD_PARAM_FILE),
+# logs and the parameter backup on the user area (/fs/microsd), so a log
+# volume damaged by a power cut cannot take the parameters with it.
+# The standard storage check is off: it reformats /dev/mmcsd0 when the
+# mount fails, and a soldered eMMC that does not mount needs a look, not
+# a format. Format once by hand: mkfatfs /dev/mmcsd0boot0,
+# mkfatfs -F 32 /dev/mmcsd0.
+#
+set STORAGE_CHECK no
+
+if ! mount -t vfat /dev/mmcsd0boot0 /fs/params
+then
+	echo "ERROR [init] no parameter storage (/dev/mmcsd0boot0)"
+fi
+
+if mount -t vfat /dev/mmcsd0 /fs/microsd
+then
+	set STORAGE_AVAILABLE yes
+else
+	echo "ERROR [init] no log storage (/dev/mmcsd0)"
+fi
