@@ -36,6 +36,7 @@
 #include <px4_platform_common/log.h>
 #include <px4_platform_common/getopt.h>
 #include <px4_platform_common/tasks.h>
+#include <drivers/drv_hrt.h>
 #include <nuttx/irq.h>
 #include <stdlib.h>
 #include <uORB/Subscription.hpp>
@@ -174,21 +175,37 @@ int FcWatchdog::task_spawn(int argc, char *argv[])
 	return PX4_ERROR;
 }
 
+static hrt_call hang_call;
+
+static void hang_in_isr(void *arg)
+{
+	for (;;) {}
+}
+
+bool FcWatchdog::test_allowed()
+{
+	if (!is_running(desc) || !get_instance<FcWatchdog>(desc)->_fiq_armed) {
+		PX4_ERR("watchdog not armed");
+		return false;
+	}
+
+	uORB::Subscription armed_sub{ORB_ID(actuator_armed)};
+	actuator_armed_s armed{};
+
+	if (!armed_sub.copy(&armed) || armed.armed) {
+		PX4_ERR("refused: vehicle armed");
+		return false;
+	}
+
+	return true;
+}
+
 int FcWatchdog::custom_command(int argc, char *argv[])
 {
+	// Bench tests only. The watchdog must cut the motors; the hung core
+	// needs a Linux reboot.
 	if (argc >= 2 && !strcmp(argv[0], "test") && !strcmp(argv[1], "hang")) {
-		// Bench test only: hang this task with interrupts off. The watchdog
-		// must cut the motors; recover with remoteproc stop/start.
-		if (!is_running(desc) || !get_instance<FcWatchdog>(desc)->_fiq_armed) {
-			PX4_ERR("watchdog not armed");
-			return PX4_ERROR;
-		}
-
-		uORB::Subscription armed_sub{ORB_ID(actuator_armed)};
-		actuator_armed_s armed{};
-
-		if (!armed_sub.copy(&armed) || armed.armed) {
-			PX4_ERR("refused: vehicle armed");
+		if (!test_allowed()) {
 			return PX4_ERROR;
 		}
 
@@ -197,6 +214,18 @@ int FcWatchdog::custom_command(int argc, char *argv[])
 		(void)up_irq_save();
 
 		for (;;) {}
+	}
+
+	if (argc >= 2 && !strcmp(argv[0], "test") && !strcmp(argv[1], "hang-isr")) {
+		if (!test_allowed()) {
+			return PX4_ERROR;
+		}
+
+		// An HRT callout runs in the timer interrupt handler.
+		PX4_WARN("hanging in an interrupt handler");
+		px4_usleep(100_ms);
+		hrt_call_after(&hang_call, 1000, hang_in_isr, nullptr);
+		return PX4_OK;
 	}
 
 	return print_usage("unknown command");
@@ -219,7 +248,7 @@ watchdog expires and cuts every motor output.
 	PRINT_MODULE_USAGE_NAME("fc_watchdog", "system");
 	PRINT_MODULE_USAGE_COMMAND("start");
 	PRINT_MODULE_USAGE_PARAM_FLAG('n', "Kick only, do not route the expiry to the motor cut", true);
-	PRINT_MODULE_USAGE_COMMAND_DESCR("test", "test hang: hang with interrupts off (bench only)");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("test", "test hang: hang with interrupts off; test hang-isr: hang in an interrupt handler (bench only)");
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 	return 0;
 }

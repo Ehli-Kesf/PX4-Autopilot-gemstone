@@ -72,6 +72,8 @@ public:
 	int print_status() override;
 
 private:
+	static bool test_allowed();
+
 	void Run() override;
 
 	static constexpr uint32_t TIMEOUT_MS = 500;
