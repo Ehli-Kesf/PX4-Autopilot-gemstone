@@ -91,8 +91,9 @@ bool                am67_gpioread(uint32_t gpio);
 #define PX4_CPU_UUID_WORD32_FORMAT_SIZE         (PX4_CPU_UUID_WORD32_LENGTH - 1 + (2 * PX4_CPU_UUID_BYTE_LENGTH) + 1)
 #define PX4_CPU_MFGUID_FORMAT_SIZE              ((2 * PX4_CPU_MFGUID_BYTE_LENGTH) + 1)
 
-/* No battery-backed SRAM crash store on this remoteproc-loaded core. */
-#define px4_savepanic(fileno, context, length)  (-1)
+/* No battery-backed SRAM crash store on this remoteproc-loaded core, so no
+ * px4_savepanic(): defining it makes the logger expect HARDFAULT_ULOG_PATH.
+ */
 
 /* ---- Buses --------------------------------------------------------------
  * am67 SPI/I2C ports are 0-based (NuttX). */
