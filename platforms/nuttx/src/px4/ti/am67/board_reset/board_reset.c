@@ -44,31 +44,37 @@
  *     chosen on the Linux side (/lib/firmware + remoteproc), not by us.
  *   - There is no Cortex-M style self-reset (no NVIC AIRCR/SYSRESETREQ), and
  *     NuttX does not implement up_systemreset() for this core.
- *   - A genuine core reset is owned by the K3 Device Manager (TISCI) or by
- *     Linux (`echo stop/start > /sys/class/remoteproc/.../state`). We have no
- *     TISCI transport here yet.
+ *   - A core reset belongs to Linux (`echo stop/start >
+ *     /sys/class/remoteproc/.../state`), which also reloads the image; a
+ *     running core cannot reset itself through the Device Manager.
  *
- * So we cannot truthfully "reboot" ourselves. Rather than silently doing
- * nothing (which would let a corrupted OS keep running after an assert - see
- * board_crashdump.c, which calls board_reset() precisely because RAM is
- * already trashed), board_reset() logs loudly and parks the core in a defined
- * halted state with interrupts disabled. If remoteproc crash-recovery is
- * enabled on the Linux side, it can then detect the stalled core and reload
- * the firmware.
+ * So the core asks Linux to restart it: board_reset() cuts the motor
+ * outputs, sends RP_MBOX_CRASH on the remoteproc mailbox (Linux logs
+ * "K3 R5F rproc ... crashed"; gem-r5f-restart.service answers with remoteproc
+ * stop/start) and waits with interrupts on, so the rpmsg side can still
+ * acknowledge the shutdown request.  A core that is locked (armed) refuses
+ * that request and keeps running with the motors cut.
  *
- * TODO: once a TISCI transport exists, replace the halt with a proper core
- * reset request (or an mbox/IPC ping asking Linux to restart us).
+ * From an interrupt handler or with interrupts already off (a crash path)
+ * nothing else may run: the request is still sent, then the core halts
+ * with interrupts off.  Linux cannot stop such a core; it needs a Linux
+ * reboot.
  */
 
 #include <px4_platform_common/px4_config.h>
 #include <px4_platform_common/board_common.h>
-#include <px4_platform_common/shutdown.h>
 
 #include <nuttx/board.h>
 #include <nuttx/irq.h>
 
 #include <errno.h>
 #include <syslog.h>
+#include <unistd.h>
+
+/* arch/arm/src/am67/am67_rptun.c */
+#ifdef CONFIG_RPTUN
+extern void am67_rptun_request_restart(void);
+#endif
 
 #define rsterr(fmt, ...)  syslog(LOG_ERR, "[reset] " fmt "\n", ##__VA_ARGS__)
 
@@ -121,7 +127,7 @@ int board_reset(int status)
 	 * core would leave every motor on its last command. Cut them first,
 	 * before anything below can fail.
 	 */
-	up_irq_save();
+	irqstate_t flags = up_irq_save();
 #if defined(CONFIG_AM67_EPWM0) || defined(CONFIG_AM67_EPWM1)
 	am67_epwm_emergency_stop();
 #endif
@@ -129,23 +135,27 @@ int board_reset(int status)
 	am67_ecap_emergency_stop();
 #endif
 
-	if (status == REBOOT_TO_BOOTLOADER) {
-		rsterr("reboot-to-bootloader requested but unsupported on this core "
-		       "(remoteproc selects the image).");
+	/* Interrupts were on at entry (bit 7 = I) and this is not a handler:
+	 * the system is sane enough to wait for Linux.
+	 */
+	const bool can_wait = !up_interrupt_context() && (flags & (1u << 7)) == 0;
 
-	} else {
-		rsterr("board_reset(status=%d) requested.", status);
+#ifdef CONFIG_RPTUN
+	am67_rptun_request_restart();
+#endif
+
+	if (can_wait) {
+		up_irq_restore(flags);
+		rsterr("board_reset(status=%d): motors cut, asked Linux to restart this core", status);
+
+		for (;;) {
+			sleep(1);
+		}
 	}
 
-	rsterr("No self-reset path on the remoteproc-loaded R5F "
-	       "(no up_systemreset()/TISCI). Halting core with IRQs disabled.");
-	rsterr("Recover from the Linux host, e.g.:");
-	rsterr("  echo stop  > /sys/class/remoteproc/remoteprocN/state");
-	rsterr("  echo start > /sys/class/remoteproc/remoteprocN/state");
+	rsterr("board_reset(status=%d) from a handler or with interrupts off: halting; "
+	       "recovering the core needs a Linux reboot.", status);
 
-	/* Freeze in a defined state so a corrupted OS cannot keep running and so
-	 * remoteproc crash-recovery (if enabled) can take over. Interrupts have
-	 * been off since entry. */
 	for (;;) {
 	}
 
