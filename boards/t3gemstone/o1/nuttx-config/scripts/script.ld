@@ -75,6 +75,9 @@ SECTIONS
         KEEP(*(.text.clock_timer))
         KEEP(*(.text.wd_timer))
         KEEP(*(.text.clock_systime_ticks))
+        /* DShot FIQ bit engine and its state (am67_dshot.c) */
+        KEEP(*(.am67_fastcode))
+        KEEP(*(.am67_fastdata))
     } > atcm
 
     .resource_table :

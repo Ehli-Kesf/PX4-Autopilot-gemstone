@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2024 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2026 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,25 +31,6 @@
 #
 ############################################################################
 
-# PX4 arch-support layer for the TI AM67 / J722S Cortex-R5F.
-#
-# The flat firmware link (platforms/nuttx/CMakeLists.txt) requires at minimum
-# the `arch_hrt` and `arch_board_reset` targets. Implemented so far:
-#
-#   [x] hrt          - high-resolution timer on DMTimer1  (arch_hrt)
-#   [x] board_reset  - reset/halt hooks                   (arch_board_reset)
-#   [x] version      - MCU/board version strings          (arch_version)
-#   [x] board_critmon- crit/irq monitor time source       (arch_board_critmon)
-#   [x] io_pins      - px4_arch_configgpio/gpiowrite/read (in px4_arch/micro_hal.h,
-#                      over am67_gpio; no separate lib needed - header-only)
-#   [x] spi          - PX4 SPI bus/CS glue (over am67_mcspi)  (arch_spi)
-#
-# See the board directory (boards/t3gemstone/o1) for the top board layer.
-
-add_subdirectory(hrt)
-add_subdirectory(board_reset)
-add_subdirectory(board_critmon)
-add_subdirectory(version)
-add_subdirectory(spi)
-add_subdirectory(io_pins)
-add_subdirectory(dshot)
+px4_add_library(arch_dshot
+	dshot.c
+)

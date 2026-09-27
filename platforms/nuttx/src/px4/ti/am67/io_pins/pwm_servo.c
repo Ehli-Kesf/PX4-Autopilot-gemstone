@@ -169,7 +169,10 @@ int up_pwm_servo_init(uint32_t channel_mask)
 		for (unsigned g = 0; g < AM67_PWM_NGROUPS; g++) {
 			int ret;
 
-			if (g_lower[g] == NULL) {
+			/* Leave groups outside the mask alone: the dshot driver owns
+			 * the EPWM groups configured for DShot (PWM_MAIN_TIMx < -1),
+			 * and setup() here would reset their time base. */
+			if (g_lower[g] == NULL || (group_mask(g) & channel_mask) == 0) {
 				continue;
 			}
 

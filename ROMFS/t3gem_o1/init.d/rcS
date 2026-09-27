@@ -78,6 +78,10 @@ mc_pos_control start
 mc_hover_thrust_estimator start
 control_allocator start
 pwm_out start
+# Motor protocol per output group is chosen with PWM_MAIN_TIM0..2 (QGC
+# Actuators): PWM rates and OneShot run in pwm_out, DShot150/300/600 in
+# dshot. Each driver only takes the groups configured for it.
+dshot start
 # Hardware watchdog (RTI8): kicked only while the gyro and the motor outputs
 # are being published. If the control loop stops for 0.5 s or the core hangs
 # (even with interrupts off), a FIQ cuts every motor output.
