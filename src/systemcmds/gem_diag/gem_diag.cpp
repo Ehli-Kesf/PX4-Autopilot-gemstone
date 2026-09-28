@@ -67,6 +67,8 @@ extern "C" {
 		uint32_t eot_timeouts;
 		uint32_t fail_stat;
 		uint32_t fail_rx;
+		uint32_t irq_xfers;
+		uint32_t irq_timeouts;
 	};
 
 	void am67_mcspi_stats(struct spi_dev_s *dev, struct am67_mcspi_stats_s *stats, bool reset);
@@ -280,6 +282,8 @@ int spi(unsigned ms)
 	printf("  FIFO stalls %lu, EOT timeouts %lu, last failure CHSTAT 0x%08lx after %lu words\n",
 	       (unsigned long)s.fifo_stalls, (unsigned long)s.eot_timeouts, (unsigned long)s.fail_stat,
 	       (unsigned long)s.fail_rx);
+	printf("  interrupt transfers %lu, interrupt timeouts %lu\n", (unsigned long)s.irq_xfers,
+	       (unsigned long)s.irq_timeouts);
 
 	if (s.transfers == 0) {
 		PX4_INFO("no transfers");
