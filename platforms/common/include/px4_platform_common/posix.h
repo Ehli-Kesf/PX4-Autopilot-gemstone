@@ -82,7 +82,11 @@ typedef pollevent_t px4_pollevent_t;
 #define px4_access 	_GLOBAL access
 #define px4_getpid 	_GLOBAL getpid
 
+#ifdef CONFIG_BOARD_STACK_OVERHEAD
+#define  PX4_STACK_OVERHEAD	CONFIG_BOARD_STACK_OVERHEAD
+#else
 #define  PX4_STACK_OVERHEAD	0
+#endif
 
 #elif defined(__PX4_POSIX)
 

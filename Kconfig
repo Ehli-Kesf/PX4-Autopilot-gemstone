@@ -67,6 +67,14 @@ menu "Toolchain"
         help
             Enables Cmake Release for -O3 optimization
 
+    config BOARD_STACK_OVERHEAD
+        int "Extra stack for every task and work queue (NuttX, bytes)"
+        default 0
+        help
+            Added to every PX4_STACK_ADJUSTED() stack size on NuttX. For
+            boards whose drivers or storage path make call chains deeper
+            than the default sizes assume.
+
     config BOARD_SUPPORT_FORTIFIED_TOOLCHAIN
         bool "Fortified toolchain support"
         default n
