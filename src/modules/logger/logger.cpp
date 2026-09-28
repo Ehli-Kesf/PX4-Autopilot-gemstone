@@ -1470,6 +1470,11 @@ void Logger::start_log_file(LogType type)
 	PX4_INFO("Start file log (type: %s)", log_type_str(type));
 	_statistics[(int) type].start_time_file = 0;
 
+	// A dropout still open from the previous file (e.g. after a write error)
+	// would be written as a dropout message ahead of the ULog header of the
+	// new file, which then no longer parses.
+	_statistics[(int) type].dropout_start = 0;
+
 	char file_name[LOG_DIR_LEN] = "";
 
 	if (get_log_file_name(type, file_name, sizeof(file_name), type == LogType::Full)) {
