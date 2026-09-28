@@ -76,6 +76,12 @@ extern "C" {
 	int am67_mcspi_take_errors(struct spi_dev_s *dev);
 }
 
+// Present only with CONFIG_AM67_FAULT_INJECTION (bench builds)
+extern "C" {
+	__attribute__((weak)) void am67_mcspi_inject_fault(unsigned int count);
+	__attribute__((weak)) void am67_sdhci_inject_fault(unsigned int mode, unsigned int count);
+}
+
 extern "C" __EXPORT int gem_diag_main(int argc, char *argv[]);
 
 namespace
@@ -418,6 +424,31 @@ int prof(unsigned seconds, unsigned top)
 	return 0;
 }
 
+// Bench fault injection: make the next N transfers of a driver fail.
+int inject(int argc, char *argv[])
+{
+	if (argc >= 4 && !strcmp(argv[2], "spi") && am67_mcspi_inject_fault != nullptr) {
+		const unsigned n = (unsigned)atoi(argv[3]);
+		am67_mcspi_inject_fault(n);
+		PX4_WARN("MCSPI: next %u FIFO transfers will stall", n);
+		return 0;
+	}
+
+	if (argc >= 5 && !strcmp(argv[2], "mmc") && am67_sdhci_inject_fault != nullptr) {
+		const unsigned mode = !strcmp(argv[3], "stall") ? 1u : !strcmp(argv[3], "error") ? 2u : 0u;
+		const unsigned n = (unsigned)atoi(argv[4]);
+
+		if (mode != 0) {
+			am67_sdhci_inject_fault(mode, n);
+			PX4_WARN("SDHCI: next %u data transfers will %s", n, argv[3]);
+			return 0;
+		}
+	}
+
+	PX4_ERR("usage: inject spi <n> | inject mmc stall|error <n> (needs CONFIG_AM67_FAULT_INJECTION)");
+	return 1;
+}
+
 int usage()
 {
 	PRINT_MODULE_DESCRIPTION("T3 Gemstone O1 (AM67 R5F) diagnostics.");
@@ -446,6 +477,9 @@ int gem_diag_main(int argc, char *argv[])
 
 	} else if (!strcmp(argv[1], "mem")) {
 		return mem();
+
+	} else if (!strcmp(argv[1], "inject")) {
+		return inject(argc, argv);
 
 	} else if (!strcmp(argv[1], "prof")) {
 		return prof(ms > 0 && ms <= 60 ? ms : 10, (argc > 3) ? (unsigned)atoi(argv[3]) : 80);
