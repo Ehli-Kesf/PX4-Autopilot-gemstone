@@ -78,6 +78,86 @@ SECTIONS
         /* DShot FIQ bit engine and its state (am67_dshot.c) */
         KEEP(*(.am67_fastcode))
         KEEP(*(.am67_fastdata))
+
+        /* Hot code (PC profile, docs/adimlar/16 A2). A DDR instruction
+         * cache miss costs ~137 cycles, TCM fetches none. Calls between
+         * here and DDR go through linker veneers (a few cycles).
+         */
+
+        /* Exception entry, dispatch, scheduler, semaphores */
+        *arm_vectors*.o*(.text)
+        *arm_saveusercontext*.o*(.text)
+        *(.text.arm_decodeirq)
+        *(.text.arm_doirq)
+        *(.text.irq_dispatch)
+        *(.text.arm_syscall)
+        *(.text.up_switch_context)
+        *(.text.nxsched_add_readytorun)
+        *(.text.nxsched_remove_readytorun)
+        *(.text.nxsched_merge_pending)
+        *(.text.nxsched_switch_context)
+        *(.text.nxsched_add_prioritized)
+        *(.text.nxsched_get_tcb)
+        *(.text.nxsem_post)
+        *(.text.nxsem_post_slow)
+        *(.text.nxsem_wait)
+        *(.text.nxsem_wait_slow)
+        *(.text.nxsem_trywait)
+        *(.text.nxsem_tickwait)
+        *(.text.nxsig_clockwait)
+        *(.text.sem_wait)
+        *(.text.sem_post)
+        *(.text.enter_critical_section)
+        *(.text.leave_critical_section)
+        *(.text.clock_systime_timespec)
+
+        /* libc copies (optimized assembly) */
+        *arch_memcpy*.o*(.text)
+        *arch_memset*.o*(.text)
+        *arch_strcmp*.o*(.text)
+
+        /* HRT and the IMU SPI driver */
+        *(.text.hrt_absolute_time)
+        *(.text.hrt_call_internal)
+        *(.text.hrt_call_enter)
+        *(.text.hrt_call_invoke)
+        *(.text.hrt_call_reschedule)
+        *(.text.hrt_call_after)
+        *(.text.hrt_tim_isr)
+        *(.text.hrt_latency_update)
+        *(.text.am67_mcspi_*)
+        *(.text.perf_begin)
+        *(.text.perf_end)
+        *(.text.perf_count)
+        *(.text.perf_set_elapsed)
+
+        /* uORB publish/copy and work queues */
+        *(.text._ZN4uORB10DeviceNode5write*)
+        *(.text._ZN4uORB10DeviceNode7publish*)
+        *(.text._ZN4uORB10DeviceNode15poll_notify_one*)
+        *(.text._ZN4uORB7Manager13orb_data_copy*)
+        *(.text._ZN4uORB7Manager17get_device_master*)
+        *(.text._ZN4uORB7Manager27orb_add_internal_subscriber*)
+        *(.text._ZN4uORB12DeviceMaster19getDeviceNodeLocked*)
+        *(.text._ZN4uORB12Subscription*)
+        *(.text._ZN4uORB24SubscriptionIntervalBase*)
+        *(.text._ZN4uORB20PublicationMultiBase7publish*)
+        *(.text._Z12get_orb_meta*)
+        *(.text._ZN4cdev4CDev11poll_notify*)
+        *(.text._ZN4cdev4CDev15poll_notify_one*)
+        *(.text._ZN3px49WorkQueue3Run*)
+        *(.text._ZN3px49WorkQueue3Add*)
+        *(.text._ZN3px48WorkItem11ScheduleNow*)
+        *(.text.param_get)
+
+        /* IMU sample path at 9 kHz and the rate loop filters */
+        *(.text._Z9rotate_3i*)
+        *(.text._ZN12PX4Gyroscope10updateFIFO*)
+        *(.text._ZN16PX4Accelerometer10updateFIFO*)
+        *(.text._ZN8ICM2094811ProcessGyro*)
+        *(.text._ZN8ICM2094812ProcessAccel*)
+        *(.text._ZN7sensors22VehicleAngularVelocity3Run*)
+        *(.text._ZN7sensors22VehicleAngularVelocity21FilterAngularVelocity*)
     } > atcm
 
     .resource_table :
