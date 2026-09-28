@@ -162,6 +162,10 @@ int up_pwm_servo_init(uint32_t channel_mask)
 		(void)am67_tisci_device_on(86u);
 		(void)am67_tisci_device_on(87u);
 
+		/* J722S_DEV_ECAP1 (channel 5). Its setup checks the PID and drops
+		 * the channel if the module is not alive. */
+		(void)am67_tisci_device_on(52u);
+
 		am67_ecap_init();
 
 		g_lower[0] = am67_epwminitialize(0);
