@@ -533,7 +533,22 @@ bool ICM20948::RegisterCheck(const T &reg_cfg)
 {
 	bool success = true;
 
-	const uint8_t reg_value = RegisterRead(reg_cfg.reg);
+	// A read that failed on the bus says nothing about the register. Treating
+	// its zeroed buffer as the register value turned a single transient SPI
+	// error (the check runs right after any failed transfer) into a full
+	// device reset and over a second without gyro data. Check again next time;
+	// a bus that keeps failing still resets the device through the FIFO read
+	// failure count.
+	uint8_t cmd[2] {};
+	cmd[0] = static_cast<uint8_t>(reg_cfg.reg) | DIR_READ;
+	SelectRegisterBank(reg_cfg.reg);
+
+	if (transfer(cmd, cmd, sizeof(cmd)) != PX4_OK) {
+		perf_count(_bad_transfer_perf);
+		return true;
+	}
+
+	const uint8_t reg_value = cmd[1];
 
 	if (reg_cfg.set_bits && ((reg_value & reg_cfg.set_bits) != reg_cfg.set_bits)) {
 		PX4_DEBUG("0x%02hhX: 0x%02hhX (0x%02hhX not set)", (uint8_t)reg_cfg.reg, reg_value, reg_cfg.set_bits);
