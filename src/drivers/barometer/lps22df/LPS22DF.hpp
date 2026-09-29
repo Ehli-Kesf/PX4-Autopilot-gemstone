@@ -53,6 +53,13 @@
 namespace lps22df
 {
 
+/* IF_CTRL: I2C_I3C_DIS in bit 6. With I2C/I3C enabled (reset default) the
+ * part also listens while CS is high and can take SPI traffic to other
+ * devices on the bus for I2C/I3C. ST's driver sets it for SPI use.
+ */
+static constexpr uint8_t IF_CTRL = 0x0E;
+static constexpr uint8_t I2C_I3C_DIS = 1 << 6;
+
 static constexpr uint8_t WHO_AM_I = 0x0F;
 static constexpr uint8_t WHO_AM_I_VALUE = 0xB4;
 

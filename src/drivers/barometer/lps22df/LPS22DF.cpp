@@ -68,10 +68,20 @@ int LPS22DF::init()
 
 int LPS22DF::configure()
 {
-	/* Block data update so multi-byte samples cannot tear, then start
+	/* SPI only, so traffic to other devices on the bus is ignored; then
+	 * block data update so multi-byte samples cannot tear, then start
 	 * continuous conversion at 25 Hz.
 	 */
-	int ret = write_reg(CTRL_REG2, BDU);
+	uint8_t if_ctrl = 0;
+	int ret = _interface->read(IF_CTRL, &if_ctrl, 1);
+
+	if (ret == OK) {
+		ret = write_reg(IF_CTRL, if_ctrl | I2C_I3C_DIS);
+	}
+
+	if (ret == OK) {
+		ret = write_reg(CTRL_REG2, BDU);
+	}
 
 	if (ret == OK) {
 		ret = write_reg(CTRL_REG1, ODR_25HZ);

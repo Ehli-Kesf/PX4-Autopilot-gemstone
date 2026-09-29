@@ -82,7 +82,7 @@ extern "C" __EXPORT int lps22df_main(int argc, char *argv[])
 {
 	using ThisDriver = LPS22DF;
 	BusCLIArguments cli{false, true};
-	cli.default_spi_frequency = 10 * 1000 * 1000;
+	cli.default_spi_frequency = 5 * 1000 * 1000; // part maximum is 10 MHz
 
 	const char *verb = cli.parseDefaultArguments(argc, argv);
 
