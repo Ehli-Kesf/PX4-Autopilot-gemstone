@@ -149,7 +149,16 @@ static void commit_group(unsigned group)
 		info.channels[1].channel = -1;  /* terminate: no second channel */
 	}
 
-	lower->ops->start(lower, &info);
+	/* A group that cannot start gives no pulses while pwm_out believes it
+	 * does: say so once per rate (OneShot, rate 0, is not implemented). */
+	static uint32_t reported_rate[AM67_PWM_NGROUPS];
+	const int ret = lower->ops->start(lower, &info);
+
+	if (ret < 0 && reported_rate[group] != g_rate[group] + 1) {
+		reported_rate[group] = g_rate[group] + 1;
+		syslog(LOG_ERR, "[pwm] group %u did not start at %u Hz (%d): no motor pulses\n",
+		       group, (unsigned)g_rate[group], ret);
+	}
 }
 
 int up_pwm_servo_init(uint32_t channel_mask)
