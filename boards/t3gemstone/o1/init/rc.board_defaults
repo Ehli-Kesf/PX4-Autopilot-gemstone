@@ -6,12 +6,9 @@
 # Quad X until another airframe is chosen in QGC.
 param set-default SYS_AUTOSTART 4001
 
-# No barometer yet: the fitted part does not match the schematic's LPS22DF.
-# Height comes from GPS until a barometer is added.
-param set-default SYS_HAS_BARO 0
+# Barometer defaults are set in rc.board_sensors, once it is known whether
+# the LPS22DF answers.
 param set-default SYS_HAS_GPS 1
-param set-default EKF2_BARO_CTRL 0
-param set-default EKF2_HGT_REF 1
 
 # Ground station link loss: Return (the MAVLink link through Linux is the
 # only control link until an RC link is added).

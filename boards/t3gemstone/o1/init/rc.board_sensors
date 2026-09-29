@@ -9,6 +9,22 @@
 # IMU driver reads it; a value set from QGC still wins. Revisit with SPI DMA.
 param set-default IMU_GYRO_RATEMAX 400
 
+# LPS22DF barometer on MCU_SPI0 CS1. Started before the IMU: until its
+# driver sets SPI-only mode the part also listens as an I2C/I3C device and
+# can take the IMU traffic on the shared bus for commands (docs/adimlar/14
+# H24). Some boards answer no LPS22DF on CS1; they keep flying on GPS
+# height, as before. A value set from QGC still wins.
+if lps22df -s -b 1 start
+then
+	param set-default SYS_HAS_BARO 1
+	param set-default EKF2_BARO_CTRL 1
+	param set-default EKF2_HGT_REF 0
+else
+	param set-default SYS_HAS_BARO 0
+	param set-default EKF2_BARO_CTRL 0
+	param set-default EKF2_HGT_REF 1
+fi
+
 # ICM-20948 sits on the bottom side. Body +X follows the X arrow printed
 # next to it, which gives ROTATION_ROLL_180 (8) for accel and gyro.
 # No -M: the AK09916 inside the ICM is not used. On this board it reads
