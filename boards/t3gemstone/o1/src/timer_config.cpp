@@ -44,9 +44,9 @@
 #include <px4_arch/io_timer_hw_description.h>
 
 constexpr io_timers_t io_timers[MAX_IO_TIMERS] = {
-	initIOTimer(Timer::Timer0),  /* group 0: EPWM0 */
-	initIOTimer(Timer::Timer1),  /* group 1: EPWM1 */
-	initIOTimer(Timer::Timer2),  /* group 2: eCAP1 (GPIO-16) */
+	initIOTimer(Timer::Timer0),  /* group 0: EPWM0, DShot (EPWM + FIQ), no OneShot */
+	initIOTimer(Timer::Timer1),  /* group 1: EPWM1, DShot (EPWM + FIQ), no OneShot */
+	initIOTimer(Timer::Timer2),  /* group 2: eCAP1 (GPIO-16), PWM only, no OneShot */
 };
 
 constexpr timer_io_channels_t timer_io_channels[MAX_TIMER_IO_CHANNELS] = {
