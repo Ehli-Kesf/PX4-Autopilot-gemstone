@@ -36,4 +36,6 @@ px4_add_module(
 	MAIN gem_diag
 	SRCS
 		gem_diag.cpp
+	DEPENDS
+		px4_work_queue
 	)

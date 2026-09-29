@@ -45,6 +45,9 @@
 #include <px4_platform_common/log.h>
 #include <px4_platform_common/micro_hal.h>
 #include <px4_platform_common/module.h>
+#include <px4_platform_common/posix.h>
+#include <px4_platform_common/atomic.h>
+#include <px4_platform_common/px4_work_queue/WorkItem.hpp>
 
 #include <nuttx/irq.h>
 #include <nuttx/sched.h>
@@ -312,37 +315,93 @@ int spi(unsigned ms)
 	return 0;
 }
 
-// Read ICM-20948 WHO_AM_I (0xEA) on MCSPI channel 3, n bytes long.
-int spi_whoami(unsigned n)
+// Read n bytes starting at register reg on MCSPI channel ch (SPI read bit
+// set). ICM-20948: ch 3, reg 0x00 -> 0xEA. Barometer candidates on ch 1:
+// LPS22DF/HB/HH 0x0F -> 0xB4/0xB1/0xB3, BMP388/390 0x00 -> dummy, 0x50/0x60,
+// DPS310 0x0D -> 0x10. Default 1 MHz mode 3 so an unknown part is not overclocked.
+//
+// The sensor bus is not locked (requires_locking false): its drivers are
+// serialised by running on wq:SPI1. The probe runs there too. Run from the
+// shell it switched the channel while the IMU driver slept in a FIFO read,
+// the gyro stopped and the watchdog cut the motors (2026-09-29).
+class SpiProbe : public px4::WorkItem
 {
-	struct spi_dev_s *dev = px4_spibus_initialize(1);
-	uint8_t tx[64] {};
-	uint8_t rx[64] {};
+public:
+	SpiProbe(unsigned ch, unsigned reg, unsigned n, uint32_t hz) :
+		px4::WorkItem("gem_diag_spi", px4::wq_configurations::SPI1), _ch(ch), _reg(reg), _n(n), _hz(hz) {}
 
-	if (dev == nullptr || n < 2 || n > sizeof(tx)) {
+	void Run() override
+	{
+		struct spi_dev_s *dev = px4_spibus_initialize(1);
+
+		if (dev != nullptr) {
+			uint8_t tx[sizeof(rx)] {};
+			tx[0] = 0x80 | _reg;
+			SPI_SETFREQUENCY(dev, _hz);
+			SPI_SETMODE(dev, SPIDEV_MODE3);
+			SPI_SETBITS(dev, 8);
+			am67_mcspi_board_select(dev, _ch, true);
+			SPI_EXCHANGE(dev, tx, rx, _n);
+			am67_mcspi_board_select(dev, _ch, false);
+			errors = am67_mcspi_take_errors(dev);
+			ok = true;
+		}
+
+		done.store(true);
+	}
+
+	uint8_t rx[64] {};
+	int errors{0};
+	bool ok{false};
+	px4::atomic_bool done{false};
+
+private:
+	const unsigned _ch;
+	const unsigned _reg;
+	const unsigned _n;
+	const uint32_t _hz;
+};
+
+int spi_whoami(unsigned ch, unsigned reg, unsigned n, uint32_t hz)
+{
+	if (ch > 3 || reg > 0x7f || n < 2 || n > sizeof(SpiProbe::rx) || hz < 100000 || hz > 10000000) {
 		return 1;
 	}
 
-	tx[0] = 0x80; // WHO_AM_I | read, bank 0 assumed
-	SPI_LOCK(dev, true);
-	SPI_SETFREQUENCY(dev, 7000000);
-	SPI_SETMODE(dev, SPIDEV_MODE3);
-	SPI_SETBITS(dev, 8);
-	am67_mcspi_board_select(dev, 3, true);
-	SPI_EXCHANGE(dev, tx, rx, n);
-	am67_mcspi_board_select(dev, 3, false);
-	const int errors = am67_mcspi_take_errors(dev);
-	SPI_LOCK(dev, false);
+	SpiProbe *probe = new SpiProbe(ch, reg, n, hz);
 
-	printf("errors %d, rx:", errors);
-
-	for (unsigned i = 0; i < n; i++) {
-		printf(" %02x", rx[i]);
+	if (probe == nullptr) {
+		return 1;
 	}
 
-	printf("\n");
+	probe->ScheduleNow();
+
+	for (int i = 0; i < 100 && !probe->done.load(); i++) {
+		px4_usleep(10000);
+	}
+
+	if (!probe->done.load()) {
+		// Still queued or running on wq:SPI1: leak it rather than free it under the worker
+		PX4_ERR("probe did not run on wq:SPI1 within 1 s");
+		return 1;
+	}
+
+	printf("ch %u reg 0x%02x %lu Hz: errors %d, rx:", ch, reg, (unsigned long)hz, probe->errors);
+
+	for (unsigned i = 0; i < n; i++) {
+		printf(" %02x", probe->rx[i]);
+	}
+
+	printf("%s\n", probe->ok ? "" : " (no SPI bus)");
+	delete probe;
+
+	struct spi_dev_s *dev = px4_spibus_initialize(1);
 	am67_mcspi_stats_s s{};
-	am67_mcspi_stats(dev, &s, false);
+
+	if (dev != nullptr) {
+		am67_mcspi_stats(dev, &s, false);
+	}
+
 	printf("FIFO stalls %lu, EOT timeouts %lu, CHSTAT 0x%08lx after %lu words\n",
 	       (unsigned long)s.fifo_stalls, (unsigned long)s.eot_timeouts, (unsigned long)s.fail_stat,
 	       (unsigned long)s.fail_rx);
@@ -457,6 +516,7 @@ int usage()
 	PRINT_MODULE_USAGE_ARG("<ms>", "window per event group (default 1000)", true);
 	PRINT_MODULE_USAGE_COMMAND_DESCR("mem", "memory and register read/write latency");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("prof", "PC sampling profile: <seconds> <top blocks>");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("whoami", "raw SPI register read: [ch (3)] [reg (0)] [bytes incl. command (2)] [Hz (1 MHz)]");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("spi", "MCU_MCSPI0 driver time");
 	PRINT_MODULE_USAGE_ARG("<ms>", "window (default 2000)", true);
 	return 1;
@@ -485,7 +545,12 @@ int gem_diag_main(int argc, char *argv[])
 		return prof(ms > 0 && ms <= 60 ? ms : 10, (argc > 3) ? (unsigned)atoi(argv[3]) : 80);
 
 	} else if (!strcmp(argv[1], "whoami")) {
-		return spi_whoami(ms > 0 ? ms : 2);
+		// whoami [ch] [reg] [n] [hz]: defaults read the ICM-20948 WHO_AM_I
+		const unsigned ch = (argc > 2) ? (unsigned)strtoul(argv[2], nullptr, 0) : 3;
+		const unsigned reg = (argc > 3) ? (unsigned)strtoul(argv[3], nullptr, 0) : 0;
+		const unsigned n = (argc > 4) ? (unsigned)strtoul(argv[4], nullptr, 0) : 2;
+		const uint32_t hz = (argc > 5) ? (uint32_t)strtoul(argv[5], nullptr, 0) : 1000000;
+		return spi_whoami(ch, reg, n, hz);
 
 	} else if (!strcmp(argv[1], "spi")) {
 		return spi(ms > 0 ? ms : 2000);
