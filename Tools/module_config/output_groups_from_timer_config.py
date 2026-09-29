@@ -69,6 +69,7 @@ def get_timer_groups(timer_config_file, verbose=False):
 
     # timers
     dshot_support = {str(i): False for i in range(16)}
+    no_oneshot = set()  # timers marked "no OneShot": the platform has none
     timers_start_marker = 'io_timers_t io_timers'
     timers_start = timer_config.find(timers_start_marker)
     if timers_start == -1:
@@ -92,7 +93,19 @@ def get_timer_groups(timer_config_file, verbose=False):
             timers.append(str(len(timers)))
         elif timer:
             if verbose: print('found timer def: {:}'.format(timer))
-            dshot_support[timer] = 'DMA' in line
+            # DShot needs DMA on STM32; a board whose DShot needs none (TI AM67:
+            # EPWM + FIQ) marks the timer line with "DShot" instead, and adds
+            # "BDShot" only once its driver reads the ESC reply.
+            if 'DMA' in line:
+                dshot_support[timer] = True
+            elif 'BDShot' in line:
+                dshot_support[timer] = True
+            elif 'DShot' in line:
+                dshot_support[timer] = 'no-bdshot'
+            else:
+                dshot_support[timer] = False
+            if 'no OneShot' in line:
+                no_oneshot.add(timer)
             timers.append(timer)
         else:
             # Make sure we don't miss anything (e.g. for different syntax) or misparse (e.g. multi-line comments)
@@ -133,7 +146,8 @@ def get_timer_groups(timer_config_file, verbose=False):
     groups = [(timers.index(k), len(list(g)), dshot_support[k]) for k, g in groupby(channel_timers)]
     outputs = {
         'types': channel_types,
-        'groups': groups
+        'groups': groups,
+        'no_oneshot': [timers.index(k) for k in no_oneshot]
         }
 
     return outputs
@@ -210,11 +224,22 @@ def get_output_groups(timer_groups, param_prefix="PWM_MAIN",
                             'actuator_types': ['motor']
                         },
                     }
+                if dshot_support == 'no-bdshot':
+                    values = pwm_timer_param_cp['values']
+                    for key in list(values.keys()):
+                        if 'bdshot' in values[key].lower():
+                            del values[key]
             else:
                 # remove dshot entries if no dshot support
                 values = pwm_timer_param_cp['values']
                 for key in list(values.keys()):
                     if 'dshot' in values[key].lower():
+                        del values[key]
+
+            if timer_index in timer_groups.get('no_oneshot', []):
+                values = pwm_timer_param_cp['values']
+                for key in list(values.keys()):
+                    if values[key].lower() == 'oneshot':
                         del values[key]
 
             for descr_type in ['short', 'long']:
