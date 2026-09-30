@@ -72,6 +72,7 @@ struct pwm_lowerhalf_s *am67_epwminitialize(int pwm);
 int am67_ecap_init(void);
 struct pwm_lowerhalf_s *am67_ecapinitialize(int ecap);
 int am67_tisci_device_on(uint32_t id);
+uint32_t am67_epwm_tbclk_guard(void);
 __END_DECLS
 
 #define AM67_PWM_NGROUPS   BOARD_NUM_IO_TIMERS      /* 3: EPWM0, EPWM1, eCAP0 */
@@ -248,6 +249,9 @@ uint16_t up_pwm_servo_get(unsigned channel)
 
 void up_pwm_update(unsigned channels_mask)
 {
+	/* Linux gates unused EPWM time-base clocks at boot; restore ours */
+	(void)am67_epwm_tbclk_guard();
+
 	for (unsigned g = 0; g < AM67_PWM_NGROUPS; g++) {
 		if (channels_mask & group_mask(g)) {
 			commit_group(g);

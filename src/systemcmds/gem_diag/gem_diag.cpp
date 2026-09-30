@@ -85,6 +85,7 @@ extern "C" {
 	__attribute__((weak)) void am67_sdhci_inject_fault(unsigned int mode, unsigned int count);
 	int am67_tisci_get_device(uint32_t id, uint8_t *programmed, uint8_t *current);
 	int am67_tisci_get_freq(uint32_t dev, uint8_t clk, uint64_t *hz);
+	__attribute__((weak)) uint32_t am67_epwm_tbclk_guard(void);
 }
 
 extern "C" __EXPORT int gem_diag_main(int argc, char *argv[]);
@@ -563,6 +564,14 @@ int tisci(int argc, char *argv[])
 		show(d.id, d.name, d.clk);
 	}
 
+	// EPWM time-base clock gates: CTRL_MMR, not DM-accounted (see the guard)
+	printf("EPWM_TB_CLKEN 0x%08lx", (unsigned long) * (volatile uint32_t *)0x00104130u);
+
+	if (am67_epwm_tbclk_guard != nullptr) {
+		printf(", restored %lu times", (unsigned long)am67_epwm_tbclk_guard());
+	}
+
+	printf("\n");
 	return 0;
 }
 
