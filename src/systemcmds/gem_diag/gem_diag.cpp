@@ -83,6 +83,8 @@ extern "C" {
 extern "C" {
 	__attribute__((weak)) void am67_mcspi_inject_fault(unsigned int count);
 	__attribute__((weak)) void am67_sdhci_inject_fault(unsigned int mode, unsigned int count);
+	int am67_tisci_get_device(uint32_t id, uint8_t *programmed, uint8_t *current);
+	int am67_tisci_get_freq(uint32_t dev, uint8_t clk, uint64_t *hz);
 }
 
 extern "C" __EXPORT int gem_diag_main(int argc, char *argv[]);
@@ -508,6 +510,62 @@ int inject(int argc, char *argv[])
 	return 1;
 }
 
+// Power state of the devices this core drives, as the Device Manager sees
+// it: programmed = what the hosts asked for (0 auto off, 1 retention, 2 on),
+// current = the hardware (0 off, 1 on, 2 in transition). GET_DEVICE is
+// read-only. With arguments: only those device IDs.
+int tisci(int argc, char *argv[])
+{
+	struct Dev {
+		uint32_t id;
+		const char *name;
+		int8_t clk;
+	};
+
+	static const Dev devs[] = {
+		{36, "DMTimer0", 2}, {37, "DMTimer1 (HRT)", 2}, {38, "DMTimer2", 2},
+		{52, "ECAP1", -1}, {57, "MMCSD0 (eMMC)", -1}, {78, "MAIN_GPIO1", -1},
+		{79, "MCU_GPIO0", -1}, {86, "EPWM0", -1}, {87, "EPWM1", -1},
+		{106, "MCU_I2C0", -1}, {147, "MCU_MCSPI0", -1}, {152, "MAIN_UART1", -1},
+		{158, "MAIN_UART6", -1},
+	};
+
+	auto show = [](uint32_t id, const char *name, int clk) {
+		uint8_t programmed = 0xff;
+		uint8_t current = 0xff;
+		const int ret = am67_tisci_get_device(id, &programmed, &current);
+
+		if (ret < 0) {
+			printf("dev %3lu %-16s GET_DEVICE %d\n", (unsigned long)id, name, ret);
+			return;
+		}
+
+		printf("dev %3lu %-16s programmed %u current %u", (unsigned long)id, name, programmed, current);
+
+		uint64_t hz = 0;
+
+		if (clk >= 0 && am67_tisci_get_freq(id, (uint8_t)clk, &hz) == 0) {
+			printf(" clk%d %llu Hz", clk, (unsigned long long)hz);
+		}
+
+		printf("\n");
+	};
+
+	if (argc > 2) {
+		for (int i = 2; i < argc; i++) {
+			show((uint32_t)strtoul(argv[i], nullptr, 0), "", -1);
+		}
+
+		return 0;
+	}
+
+	for (const Dev &d : devs) {
+		show(d.id, d.name, d.clk);
+	}
+
+	return 0;
+}
+
 int usage()
 {
 	PRINT_MODULE_DESCRIPTION("T3 Gemstone O1 (AM67 R5F) diagnostics.");
@@ -518,6 +576,7 @@ int usage()
 	PRINT_MODULE_USAGE_COMMAND_DESCR("prof", "PC sampling profile: <seconds> <top blocks>");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("whoami", "raw SPI register read: [ch (3)] [reg (0)] [bytes incl. command (2)] [Hz (1 MHz)]");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("spi", "MCU_MCSPI0 driver time");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("tisci", "DM power state of the devices this core uses: [dev ...]");
 	PRINT_MODULE_USAGE_ARG("<ms>", "window (default 2000)", true);
 	return 1;
 }
@@ -554,6 +613,9 @@ int gem_diag_main(int argc, char *argv[])
 
 	} else if (!strcmp(argv[1], "spi")) {
 		return spi(ms > 0 ? ms : 2000);
+
+	} else if (!strcmp(argv[1], "tisci")) {
+		return tisci(argc, argv);
 	}
 
 	return usage();
