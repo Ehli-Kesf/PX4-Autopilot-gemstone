@@ -611,6 +611,33 @@ int sysreset(int argc, char *argv[])
 	return 1;
 }
 
+// Bench test of the watchdog path: spin with interrupts off until the RTI8
+// FIQ cuts the motors and resets the SoC. Refused while armed.
+int hang(int argc, char *argv[])
+{
+	if (argc < 3 || strcmp(argv[2], "evet") != 0) {
+		PX4_ERR("the core hangs until the watchdog resets the SoC: gem_diag hang evet");
+		return 1;
+	}
+
+	uORB::Subscription armed_sub{ORB_ID(actuator_armed)};
+	actuator_armed_s armed{};
+
+	if (!armed_sub.copy(&armed) || armed.armed) {
+		PX4_ERR("armed (or arming state unknown): refused");
+		return 1;
+	}
+
+	PX4_WARN("hanging with interrupts off");
+	usleep(100000);
+	(void)up_irq_save();
+
+	for (;;) {
+	}
+
+	return 1;
+}
+
 int usage()
 {
 	PRINT_MODULE_DESCRIPTION("T3 Gemstone O1 (AM67 R5F) diagnostics.");
@@ -623,6 +650,7 @@ int usage()
 	PRINT_MODULE_USAGE_COMMAND_DESCR("spi", "MCU_MCSPI0 driver time");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("tisci", "DM power state of the devices this core uses: [dev ...]");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("sysreset", "reset the SoC through the DM (TISCI SYS_RESET): evet");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("hang", "spin with interrupts off (watchdog test): evet");
 	PRINT_MODULE_USAGE_ARG("<ms>", "window (default 2000)", true);
 	return 1;
 }
@@ -665,6 +693,9 @@ int gem_diag_main(int argc, char *argv[])
 
 	} else if (!strcmp(argv[1], "sysreset")) {
 		return sysreset(argc, argv);
+
+	} else if (!strcmp(argv[1], "hang")) {
+		return hang(argc, argv);
 	}
 
 	return usage();
