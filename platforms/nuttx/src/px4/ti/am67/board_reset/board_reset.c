@@ -50,10 +50,14 @@
  *
  * So the core asks Linux to restart it: board_reset() cuts the motor
  * outputs, sends RP_MBOX_CRASH on the remoteproc mailbox (Linux logs
- * "K3 R5F rproc ... crashed"; gem-r5f-restart.service answers with remoteproc
- * stop/start) and waits with interrupts on, so the rpmsg side can still
- * acknowledge the shutdown request.  A core that is locked (armed) refuses
- * that request and keeps running with the motors cut.
+ * "K3 R5F rproc ... crashed"; gem-r5f-restart.service answers with a clean
+ * Linux reboot, which restarts this core too) and waits with interrupts on.
+ * If Linux has not reset the SoC after LINUX_REBOOT_WAIT_S (dead, hung, or
+ * the service is missing), the core asks the Device Manager for a SoC reset
+ * itself (TISCI SYS_RESET, as Linux reboot does): a PX4 reboot no longer
+ * depends on Linux.  Linux is preferred because SYS_RESET hits it like a
+ * power cut.  A core that is locked (armed) refuses that request and keeps
+ * running with the motors cut.
  *
  * From an interrupt handler or with interrupts already off (a crash path)
  * nothing else may run: the request is still sent, then the core halts
@@ -77,6 +81,13 @@ extern void am67_rptun_request_restart(void);
 #endif
 
 #define rsterr(fmt, ...)  syslog(LOG_ERR, "[reset] " fmt "\n", ##__VA_ARGS__)
+
+/* How long a clean Linux reboot may take before this core resets the SoC */
+
+#define LINUX_REBOOT_WAIT_S 15
+
+/* arch/arm/src/am67/am67_tisci.c */
+extern int am67_tisci_sys_reset(void);
 
 /* Motor output kill switches from arch/arm/src/am67 (Trip-Zone / eCAP stop).
  * Both are safe to call before the outputs were set up.
@@ -147,6 +158,13 @@ int board_reset(int status)
 	if (can_wait) {
 		up_irq_restore(flags);
 		rsterr("board_reset(status=%d): motors cut, asked Linux to restart this core", status);
+
+		sleep(LINUX_REBOOT_WAIT_S);
+
+		rsterr("Linux did not reboot in %d s: resetting the SoC through the DM", LINUX_REBOOT_WAIT_S);
+		usleep(100000); /* let the line reach the log */
+		const int ret = am67_tisci_sys_reset();
+		rsterr("SoC reset refused (%d): waiting for Linux", ret);
 
 		for (;;) {
 			sleep(1);

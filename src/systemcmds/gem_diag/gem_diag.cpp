@@ -48,6 +48,8 @@
 #include <px4_platform_common/posix.h>
 #include <px4_platform_common/atomic.h>
 #include <px4_platform_common/px4_work_queue/WorkItem.hpp>
+#include <uORB/Subscription.hpp>
+#include <uORB/topics/actuator_armed.h>
 
 #include <nuttx/irq.h>
 #include <nuttx/sched.h>
@@ -86,6 +88,8 @@ extern "C" {
 	int am67_tisci_get_device(uint32_t id, uint8_t *programmed, uint8_t *current);
 	int am67_tisci_get_freq(uint32_t dev, uint8_t clk, uint64_t *hz);
 	__attribute__((weak)) uint32_t am67_epwm_tbclk_guard(void);
+	__attribute__((weak)) int am67_tisci_sys_reset(void);
+	__attribute__((weak)) void am67_epwm_emergency_stop(void);
 }
 
 extern "C" __EXPORT int gem_diag_main(int argc, char *argv[]);
@@ -575,6 +579,38 @@ int tisci(int argc, char *argv[])
 	return 0;
 }
 
+// Bench test of a PX4 reboot without Linux: ask the DM (TISCI SYS_RESET)
+// to reset the SoC. Refused while armed; cuts the motor outputs first.
+int sysreset(int argc, char *argv[])
+{
+	if (argc < 3 || strcmp(argv[2], "evet") != 0) {
+		PX4_ERR("whole SoC (Linux too) resets: gem_diag sysreset evet");
+		return 1;
+	}
+
+	uORB::Subscription armed_sub{ORB_ID(actuator_armed)};
+	actuator_armed_s armed{};
+
+	if (!armed_sub.copy(&armed) || armed.armed) {
+		PX4_ERR("armed (or arming state unknown): refused");
+		return 1;
+	}
+
+	if (am67_tisci_sys_reset == nullptr) {
+		PX4_ERR("no TISCI system reset in this NuttX");
+		return 1;
+	}
+
+	if (am67_epwm_emergency_stop != nullptr) {
+		am67_epwm_emergency_stop();
+	}
+
+	usleep(100000); // let the log reach the console
+	const int ret = am67_tisci_sys_reset();
+	PX4_ERR("still running: SYS_RESET returned %d", ret);
+	return 1;
+}
+
 int usage()
 {
 	PRINT_MODULE_DESCRIPTION("T3 Gemstone O1 (AM67 R5F) diagnostics.");
@@ -586,6 +622,7 @@ int usage()
 	PRINT_MODULE_USAGE_COMMAND_DESCR("whoami", "raw SPI register read: [ch (3)] [reg (0)] [bytes incl. command (2)] [Hz (1 MHz)]");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("spi", "MCU_MCSPI0 driver time");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("tisci", "DM power state of the devices this core uses: [dev ...]");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("sysreset", "reset the SoC through the DM (TISCI SYS_RESET): evet");
 	PRINT_MODULE_USAGE_ARG("<ms>", "window (default 2000)", true);
 	return 1;
 }
@@ -625,6 +662,9 @@ int gem_diag_main(int argc, char *argv[])
 
 	} else if (!strcmp(argv[1], "tisci")) {
 		return tisci(argc, argv);
+
+	} else if (!strcmp(argv[1], "sysreset")) {
+		return sysreset(argc, argv);
 	}
 
 	return usage();
