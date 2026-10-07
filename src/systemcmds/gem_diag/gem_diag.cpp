@@ -48,6 +48,8 @@
 #include <px4_platform_common/posix.h>
 #include <px4_platform_common/atomic.h>
 #include <px4_platform_common/px4_work_queue/WorkItem.hpp>
+#include <uORB/Subscription.hpp>
+#include <uORB/topics/actuator_armed.h>
 
 #include <nuttx/irq.h>
 #include <nuttx/sched.h>
@@ -83,6 +85,11 @@ extern "C" {
 extern "C" {
 	__attribute__((weak)) void am67_mcspi_inject_fault(unsigned int count);
 	__attribute__((weak)) void am67_sdhci_inject_fault(unsigned int mode, unsigned int count);
+	int am67_tisci_get_device(uint32_t id, uint8_t *programmed, uint8_t *current);
+	int am67_tisci_get_freq(uint32_t dev, uint8_t clk, uint64_t *hz);
+	__attribute__((weak)) uint32_t am67_epwm_tbclk_guard(void);
+	__attribute__((weak)) int am67_tisci_sys_reset(void);
+	__attribute__((weak)) void am67_epwm_emergency_stop(void);
 }
 
 extern "C" __EXPORT int gem_diag_main(int argc, char *argv[]);
@@ -508,6 +515,129 @@ int inject(int argc, char *argv[])
 	return 1;
 }
 
+// Power state of the devices this core drives, as the Device Manager sees
+// it: programmed = what the hosts asked for (0 auto off, 1 retention, 2 on),
+// current = the hardware (0 off, 1 on, 2 in transition). GET_DEVICE is
+// read-only. With arguments: only those device IDs.
+int tisci(int argc, char *argv[])
+{
+	struct Dev {
+		uint32_t id;
+		const char *name;
+		int8_t clk;
+	};
+
+	static const Dev devs[] = {
+		{36, "DMTimer0", 2}, {37, "DMTimer1 (HRT)", 2}, {38, "DMTimer2", 2},
+		{52, "ECAP1", -1}, {57, "MMCSD0 (eMMC)", -1}, {78, "MAIN_GPIO1", -1},
+		{79, "MCU_GPIO0", -1}, {86, "EPWM0", -1}, {87, "EPWM1", -1},
+		{106, "MCU_I2C0", -1}, {147, "MCU_MCSPI0", -1}, {152, "MAIN_UART1", -1},
+		{158, "MAIN_UART6", -1},
+	};
+
+	auto show = [](uint32_t id, const char *name, int clk) {
+		uint8_t programmed = 0xff;
+		uint8_t current = 0xff;
+		const int ret = am67_tisci_get_device(id, &programmed, &current);
+
+		if (ret < 0) {
+			printf("dev %3lu %-16s GET_DEVICE %d\n", (unsigned long)id, name, ret);
+			return;
+		}
+
+		printf("dev %3lu %-16s programmed %u current %u", (unsigned long)id, name, programmed, current);
+
+		uint64_t hz = 0;
+
+		if (clk >= 0 && am67_tisci_get_freq(id, (uint8_t)clk, &hz) == 0) {
+			printf(" clk%d %llu Hz", clk, (unsigned long long)hz);
+		}
+
+		printf("\n");
+	};
+
+	if (argc > 2) {
+		for (int i = 2; i < argc; i++) {
+			show((uint32_t)strtoul(argv[i], nullptr, 0), "", -1);
+		}
+
+		return 0;
+	}
+
+	for (const Dev &d : devs) {
+		show(d.id, d.name, d.clk);
+	}
+
+	// EPWM time-base clock gates: CTRL_MMR, not DM-accounted (see the guard)
+	printf("EPWM_TB_CLKEN 0x%08lx", (unsigned long) * (volatile uint32_t *)0x00104130u);
+
+	if (am67_epwm_tbclk_guard != nullptr) {
+		printf(", restored %lu times", (unsigned long)am67_epwm_tbclk_guard());
+	}
+
+	printf("\n");
+	return 0;
+}
+
+// Bench test of a PX4 reboot without Linux: ask the DM (TISCI SYS_RESET)
+// to reset the SoC. Refused while armed; cuts the motor outputs first.
+int sysreset(int argc, char *argv[])
+{
+	if (argc < 3 || strcmp(argv[2], "evet") != 0) {
+		PX4_ERR("whole SoC (Linux too) resets: gem_diag sysreset evet");
+		return 1;
+	}
+
+	uORB::Subscription armed_sub{ORB_ID(actuator_armed)};
+	actuator_armed_s armed{};
+
+	if (!armed_sub.copy(&armed) || armed.armed) {
+		PX4_ERR("armed (or arming state unknown): refused");
+		return 1;
+	}
+
+	if (am67_tisci_sys_reset == nullptr) {
+		PX4_ERR("no TISCI system reset in this NuttX");
+		return 1;
+	}
+
+	if (am67_epwm_emergency_stop != nullptr) {
+		am67_epwm_emergency_stop();
+	}
+
+	usleep(100000); // let the log reach the console
+	const int ret = am67_tisci_sys_reset();
+	PX4_ERR("still running: SYS_RESET returned %d", ret);
+	return 1;
+}
+
+// Bench test of the watchdog path: spin with interrupts off until the RTI8
+// FIQ cuts the motors and resets the SoC. Refused while armed.
+int hang(int argc, char *argv[])
+{
+	if (argc < 3 || strcmp(argv[2], "evet") != 0) {
+		PX4_ERR("the core hangs until the watchdog resets the SoC: gem_diag hang evet");
+		return 1;
+	}
+
+	uORB::Subscription armed_sub{ORB_ID(actuator_armed)};
+	actuator_armed_s armed{};
+
+	if (!armed_sub.copy(&armed) || armed.armed) {
+		PX4_ERR("armed (or arming state unknown): refused");
+		return 1;
+	}
+
+	PX4_WARN("hanging with interrupts off");
+	usleep(100000);
+	(void)up_irq_save();
+
+	for (;;) {
+	}
+
+	return 1;
+}
+
 int usage()
 {
 	PRINT_MODULE_DESCRIPTION("T3 Gemstone O1 (AM67 R5F) diagnostics.");
@@ -518,6 +648,9 @@ int usage()
 	PRINT_MODULE_USAGE_COMMAND_DESCR("prof", "PC sampling profile: <seconds> <top blocks>");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("whoami", "raw SPI register read: [ch (3)] [reg (0)] [bytes incl. command (2)] [Hz (1 MHz)]");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("spi", "MCU_MCSPI0 driver time");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("tisci", "DM power state of the devices this core uses: [dev ...]");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("sysreset", "reset the SoC through the DM (TISCI SYS_RESET): evet");
+	PRINT_MODULE_USAGE_COMMAND_DESCR("hang", "spin with interrupts off (watchdog test): evet");
 	PRINT_MODULE_USAGE_ARG("<ms>", "window (default 2000)", true);
 	return 1;
 }
@@ -554,6 +687,15 @@ int gem_diag_main(int argc, char *argv[])
 
 	} else if (!strcmp(argv[1], "spi")) {
 		return spi(ms > 0 ? ms : 2000);
+
+	} else if (!strcmp(argv[1], "tisci")) {
+		return tisci(argc, argv);
+
+	} else if (!strcmp(argv[1], "sysreset")) {
+		return sysreset(argc, argv);
+
+	} else if (!strcmp(argv[1], "hang")) {
+		return hang(argc, argv);
 	}
 
 	return usage();

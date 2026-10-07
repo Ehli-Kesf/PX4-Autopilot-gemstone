@@ -36,6 +36,7 @@ MEMORY
   atcm         (rwx): ORIGIN = 0x00000000, LENGTH = 32K      /* Instruction TCM for vectors/boot code */
   btcm         (rwx): ORIGIN = 0x41010000, LENGTH = 32K      /* Data TCM, ideal for stack */
   ddr_rsctable (rwx): ORIGIN = 0xA2100000, LENGTH = 1K       /* Resource Table for RemoteProc/IPC */
+  ddr_noinit   (rw) : ORIGIN = 0xA2180000, LENGTH = 64K      /* survives a SoC reset, never loaded */
   ddr_rsv      (rwx): ORIGIN = 0xA2200000, LENGTH = 256K     /* VRING + RPMsg (VDEV0_VRING_BASE) */
   ddr          (rwx): ORIGIN = 0xA2240000, LENGTH = 0xDC0000 /* Main DDR RAM (~13.75 MB) */
 }
@@ -165,6 +166,17 @@ SECTIONS
         KEEP(*(.resource_table))
         . = ALIGN(1024);
     } > ddr_rsctable
+
+    /* RAMLOG and the watchdog record (CONFIG_AM67_RESET_ON_FATAL): in the
+     * free part of the R5F carveout, as an INFO section, so it is in no
+     * program header. U-Boot and Linux zero the memsz - filesz part of every
+     * PT_LOAD (a NOLOAD section would get one); this keeps the previous
+     * run's log readable after the SoC reset that ended it.
+     */
+    .am67_noinit (INFO) :
+    {
+        *(.am67_noinit)
+    } > ddr_noinit
 
     .ddr_rsv (NOLOAD) :
     {

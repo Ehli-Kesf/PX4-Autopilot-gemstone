@@ -49,13 +49,12 @@
  *
  * IMPORTANT INTEGRATION NOTES (the two things most likely to go wrong):
  *
- *   1. On K3 SoCs every peripheral is power/clock-gated and ownership-assigned
- *      by the Device Manager (system firmware / TISCI). NuttX on this core does
- *      NO TISCI itself; it relies on the bootloader / Linux remoteproc side to
- *      have already powered, clocked and assigned the timer to r5fss0_core0.
- *      If MAIN_TIMER1 was not granted/clocked, register reads return 0x00000000
- *      or 0xFFFFFFFF and/or the counter never advances. hrt_tim_init() detects
- *      and LOUDLY logs both cases below.
+ *   1. On K3 SoCs every peripheral is power/clock-gated by the Device
+ *      Manager (system firmware / TISCI). hrt_tim_init() asks for the timer
+ *      itself before the first register access, so its power no longer
+ *      depends on Linux or U-Boot, and checks that its functional clock is
+ *      HRT_TIMER_RATE. A dead module or a stopped counter is still detected
+ *      and LOUDLY logged below.
  *
  *   2. The DMTimer1 base address (0x02410000) is derived from the universal K3
  *      0x10000 instance stride relative to DMTimer0 (0x02400000); it was not
@@ -114,6 +113,16 @@
 #ifndef HRT_TIMER_RATE
 #  define HRT_TIMER_RATE   25000000u     /* DMTimer input = HFOSC0 @ 25 MHz */
 #endif
+
+#ifndef HRT_TIMER_TISCI_DEV
+#  define HRT_TIMER_TISCI_DEV 37u        /* J722S TISCI device of MAIN DMTimer1 */
+#endif
+
+#define HRT_TIMER_TISCI_FCK 2u           /* its functional clock (Linux DTS) */
+
+/* arch/arm/src/am67/am67_tisci.c */
+int am67_tisci_device_require(uint32_t id);
+int am67_tisci_get_freq(uint32_t dev, uint8_t clk, uint64_t *hz);
 
 /* Ticks per microsecond. 25 MHz -> 25 ticks/us. No power-of-two prescaler
  * yields exactly 1 MHz from 25 MHz, so we run the counter at the full input
@@ -228,6 +237,28 @@ static bool hrt_counter_is_advancing(void)
 static void hrt_tim_init(void)
 {
 	uint32_t tidr;
+	uint64_t fck_hz = 0;
+
+	/* Power first: an unpowered module aborts on the first access. Nothing
+	 * else keeps DMTimer1 on once Linux leaves it alone (px4-r5f overlay) or
+	 * when U-Boot started this core. */
+	if (am67_tisci_device_require(HRT_TIMER_TISCI_DEV) < 0) {
+		hrterr("MAIN_TIMER%u (TISCI %u) is not powered", (unsigned)(HRT_TIMER_TISCI_DEV - 36u),
+		       (unsigned)HRT_TIMER_TISCI_DEV);
+		PANIC();
+	}
+
+	/* Every time conversion assumes HRT_TIMER_RATE. A different clock would
+	 * make the whole system time wrong (EKF, rate loops): refuse to run. */
+	if (am67_tisci_get_freq(HRT_TIMER_TISCI_DEV, HRT_TIMER_TISCI_FCK, &fck_hz) == 0) {
+		if (fck_hz != HRT_TIMER_RATE) {
+			hrterr("DMTimer fck %llu Hz, expected %u Hz", (unsigned long long)fck_hz, (unsigned)HRT_TIMER_RATE);
+			PANIC();
+		}
+
+	} else {
+		hrtwarn("DMTimer fck unknown (TISCI GET_FREQ failed), assuming %u Hz", (unsigned)HRT_TIMER_RATE);
+	}
 
 	/* --- Suspect #1/#2: is the module powered/clocked/assigned, and is the
 	 * base address correct? A live K3 DMTimer returns a non-zero revision in

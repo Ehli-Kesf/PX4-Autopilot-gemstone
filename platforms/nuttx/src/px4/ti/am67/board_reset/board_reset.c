@@ -48,23 +48,24 @@
  *     /sys/class/remoteproc/.../state`), which also reloads the image; a
  *     running core cannot reset itself through the Device Manager.
  *
- * So the core asks Linux to restart it: board_reset() cuts the motor
- * outputs, sends RP_MBOX_CRASH on the remoteproc mailbox (Linux logs
- * "K3 R5F rproc ... crashed"; gem-r5f-restart.service answers with remoteproc
- * stop/start) and waits with interrupts on, so the rpmsg side can still
- * acknowledge the shutdown request.  A core that is locked (armed) refuses
- * that request and keeps running with the motors cut.
+ * So the core resets the whole SoC itself: board_reset() cuts the motor
+ * outputs and asks the Device Manager for a SoC reset (TISCI SYS_RESET, the
+ * request Linux reboot sends). U-Boot then starts this core again from the
+ * SD boot partition (early boot); Linux restarts too and attaches. Nothing
+ * waits for Linux: a reset needed in a hurry happens at once. The log
+ * (RAMLOG) lives in DDR that the reset does not clear, so the next start
+ * still shows why the previous one ended.
  *
- * From an interrupt handler or with interrupts already off (a crash path)
- * nothing else may run: the request is still sent, then the core halts
- * with interrupts off.  Linux cannot stop such a core; it needs a Linux
- * reboot.
+ * From an interrupt handler or with interrupts off (assert, crash) the
+ * same happens with the lock-free request. Only if the DM refuses does the
+ * core fall back to asking Linux (remoteproc mailbox) and halting.
  */
 
 #include <px4_platform_common/px4_config.h>
 #include <px4_platform_common/board_common.h>
 
 #include <nuttx/board.h>
+#include <nuttx/cache.h>
 #include <nuttx/irq.h>
 
 #include <errno.h>
@@ -77,6 +78,10 @@ extern void am67_rptun_request_restart(void);
 #endif
 
 #define rsterr(fmt, ...)  syslog(LOG_ERR, "[reset] " fmt "\n", ##__VA_ARGS__)
+
+/* arch/arm/src/am67/am67_tisci.c */
+extern int am67_tisci_sys_reset(void);
+extern int am67_tisci_sys_reset_now(void);
 
 /* Motor output kill switches from arch/arm/src/am67 (Trip-Zone / eCAP stop).
  * Both are safe to call before the outputs were set up.
@@ -135,26 +140,37 @@ int board_reset(int status)
 	am67_ecap_emergency_stop();
 #endif
 
-	/* Interrupts were on at entry (bit 7 = I) and this is not a handler:
-	 * the system is sane enough to wait for Linux.
-	 */
-	const bool can_wait = !up_interrupt_context() && (flags & (1u << 7)) == 0;
+	/* Interrupts were on at entry (bit 7 = I) and this is not a handler */
+	const bool thread = !up_interrupt_context() && (flags & (1u << 7)) == 0;
 
+	rsterr("board_reset(status=%d): motors cut, resetting the SoC", status);
+
+	int ret;
+
+	if (thread) {
+		/* The Trip-Zone holds the outputs low on its own; the locked
+		 * request may wait for another TISCI user, so not with IRQs off.
+		 */
+		up_irq_restore(flags);
+		up_flush_dcache_all(); /* the log must reach DDR */
+		ret = am67_tisci_sys_reset();
+
+	} else {
+		up_flush_dcache_all();
+		ret = am67_tisci_sys_reset_now();
+	}
+
+	/* The DM refused: the last resort is Linux */
+	rsterr("SoC reset refused (%d): asking Linux to restart this core", ret);
 #ifdef CONFIG_RPTUN
 	am67_rptun_request_restart();
 #endif
 
-	if (can_wait) {
-		up_irq_restore(flags);
-		rsterr("board_reset(status=%d): motors cut, asked Linux to restart this core", status);
-
+	if (thread) {
 		for (;;) {
 			sleep(1);
 		}
 	}
-
-	rsterr("board_reset(status=%d) from a handler or with interrupts off: halting; "
-	       "recovering the core needs a Linux reboot.", status);
 
 	for (;;) {
 	}
