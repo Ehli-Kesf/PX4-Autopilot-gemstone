@@ -5,6 +5,9 @@ CONFIG_BOARD_ARCHITECTURE="cortex-r5f"
 # The ICM-20948 IMU is enabled now that the AM67 SPI arch-support layer
 # (px4_spibus + hardware-CS glue) exists (platforms/nuttx/src/px4/ti/am67/spi);
 # it is started from init/rc.board_sensors.
+# External ADS1115 on MCU_I2C0 for an analog power module; started only
+# when ADC_ADS1115_EN is set (init/rc.board_sensors).
+CONFIG_DRIVERS_ADC_ADS1115=y
 CONFIG_DRIVERS_BAROMETER_LPS22DF=y
 CONFIG_DRIVERS_DSHOT=y
 CONFIG_DRIVERS_GPS=y
@@ -21,6 +24,7 @@ CONFIG_DRIVERS_PWM_OUT=y
 # (this airframe is Motor1..5, see src/init.c) - no FW/VTOL. Navigator + dataman
 # are required by commander's geofence failsafe (px4::params::GF_ACTION). Logger
 # (needs storage) intentionally left out for this stage.
+CONFIG_MODULES_BATTERY_STATUS=y
 CONFIG_MODULES_COMMANDER=y
 CONFIG_MODULES_CONTROL_ALLOCATOR=y
 CONFIG_MODULES_DATAMAN=y
