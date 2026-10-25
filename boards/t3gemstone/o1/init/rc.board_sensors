@@ -36,3 +36,11 @@ icm20948 -s -b 1 -c 3 -R 8 start
 # (HAT 3/5), arrow towards the board nose (+X), module top side up.
 # ROTATION_PITCH_180_YAW_270 (27): the chip sits upside down in the module.
 qmc5883l -X -b 1 -R 27 start
+
+# External ADS1115 ADC (0x48) on MCU_I2C0 for an analog power module: AIN0
+# voltage, AIN1 current (src/board_config.h). The scaling is the module's
+# BAT1_V_DIV / BAT1_A_PER_V. Off by default, like PX4's other external ADCs.
+if param compare -s ADC_ADS1115_EN 1
+then
+	ads1115 -X -b 1 start
+fi

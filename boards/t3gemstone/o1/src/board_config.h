@@ -98,10 +98,18 @@
 #define AM67_MCSPI_CH_ICM20948 3     /* MCU_SPI0 CS3 */
 
 /* Power / battery ----------------------------------------------------------
- * No ADC layer on the AM67 yet -> no power bricks. board_common.h explicitly
- * allows BOARD_NUMBER_BRICKS == 0.
+ * The AM67 has no PX4 ADC layer. An analog power module is read through an
+ * external ADS1115 on MCU_I2C0 (HAT 3/5), enabled with ADC_ADS1115_EN: AIN0
+ * carries the voltage sense, AIN1 the current sense. The module's scaling
+ * is set with BAT1_V_DIV / BAT1_A_PER_V; nothing here is module specific.
+ * Without ADC_ADS1115_EN no adc_report is published and battery_status
+ * publishes nothing, as before.
  */
-#define BOARD_NUMBER_BRICKS    0
+#define BOARD_NUMBER_BRICKS          1
+#define ADC_BATTERY_VOLTAGE_CHANNEL  0
+#define ADC_BATTERY_CURRENT_CHANNEL  1
+/* No power-path controller reports which brick is live: always valid. */
+#define BOARD_ADC_BRICK_VALID        (1)
 
 /* PWM outputs --------------------------------------------------------------
  * Actuator outputs via the PX4 pwm_out module. The am67 arch pwm_servo layer
